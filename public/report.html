@@ -1,0 +1,3822 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NAT Gateway 90-day Peak + Cost Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#fafafa; --panel:#fff; --border:#e5e7eb; --muted:#6b7280; --text:#111827; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; }
+  header { padding: 24px 32px; background: linear-gradient(180deg,#1e293b,#334155); color: #fff; }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  header .meta { margin-top: 6px; color: #cbd5e1; font-size: 12px; }
+  main { padding: 24px 32px; max-width: 1700px; }
+  section { margin-bottom: 36px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; color: #1f2937; }
+  h2 .sub { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 8px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .stat .v { font-size: 22px; font-weight: 600; }
+  .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: #f9fafb; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.bold { font-weight: 600; }
+  td.mono { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; }
+  td.small { font-size: 11px; color: var(--muted); }
+  .muted { color: var(--muted); font-size: 11px; }
+  tbody tr:hover { background: #f9fafb; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+  .badge.net      { background:#dbeafe; color:#1d4ed8; }  /* fallback / generic network */
+  .badge.cluster  { background:#dbeafe; color:#1d4ed8; }  /* cluster-network: blue */
+  .badge.services { background:#e0e7ff; color:#3730a3; }  /* services-network: indigo */
+  .badge.db       { background:#f3e8ff; color:#6b21a8; }  /* db-network: purple */
+  .badge.mixed    { background:#e5e7eb; color:#374151; }  /* mixed types in one VPC */
+  .badge.ent      { background:#fef3c7; color:#b45309; }
+  .size { display:inline-block; padding:3px 10px; border-radius:4px; font-family:"SF Mono",ui-monospace,monospace; font-size:11px; font-weight:600; }
+  .size-s { background:#ecfdf5; color:#047857; }
+  .size-m { background:#eff6ff; color:#1d4ed8; }
+  .size-l { background:#fef3c7; color:#b45309; }
+  .size-xl { background:#fee2e2; color:#b91c1c; }
+  .sub-mini { font-size:10px; color: var(--muted); margin-top:2px; }
+  .same { font-size:11px; color: var(--muted); font-style: italic; }
+  .historical { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:3px; background:#e0e7ff; color:#3730a3; font-size:9px; font-weight:700; letter-spacing:.05em; }
+  .historical-mini { font-size:9px; color:#3730a3; }
+  .rec { display:inline-block; padding:3px 10px; border-radius:4px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+  .rec-replace { background:#d1fae5; color:#065f46; }
+  .rec-keep { background:#fee2e2; color:#991b1b; }
+  .rec-marginal { background:#fef3c7; color:#92400e; }
+  .rec-unknown { background:#e5e7eb; color:#374151; }
+  td.pos { color:#047857; }
+  td.neg { color:#b91c1c; }
+  .chart-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .caveats { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 18px; font-size: 12px; }
+  .caveats h3 { margin: 0 0 8px; font-size: 13px; }
+  .caveats ul { margin: 0; padding-left: 20px; }
+  .caveats li { margin: 3px 0; }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+  summary { padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 13px; }
+  summary:hover { background: #f9fafb; }
+  details[open] > .panel-body { border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<header>
+  <h1>NAT Gateway 90-day Peak Bandwidth + Cost Analysis</h1>
+  <div class="meta">Generated 2026-05-16 10:33 · 38 accounts · 51 VPCs · 153 NATs · cost from Cost Explorer (last 30 days)</div>
+</header>
+<main>
+
+  <div class="summary">
+    <div class="stat"><div class="k">Accounts</div><div class="v">38</div></div>
+    <div class="stat"><div class="k">VPCs</div><div class="v">51</div></div>
+    <div class="stat"><div class="k">NAT Gateways</div><div class="v">153</div></div>
+    <div class="stat"><div class="k">Top per-NAT peak (90d)</div><div class="v">31.62 Gbps</div></div>
+  </div>
+
+  <div class="summary">
+    <div class="stat"><div class="k">NAT spend last 30d</div><div class="v">$92,076</div></div>
+    <div class="stat"><div class="k">EC2 alt — on-demand</div><div class="v">$84,049<span style="font-size:11px;color:var(--muted);font-weight:400"> all replaced + 8 GB gp3</span></div></div>
+    <div class="stat"><div class="k">EC2 alt — 1y Compute SP</div><div class="v">$64,290<span style="font-size:11px;color:var(--muted);font-weight:400"> No Upfront, ~21-28% off OD</span></div></div>
+    <div class="stat"><div class="k">VPC count by Action</div><div class="v" style="font-size:12px">
+      <div>OD: <span class="rec rec-replace">9R</span> <span class="rec rec-keep">40K</span> <span class="rec rec-marginal">2M</span></div>
+      <div style="margin-top:4px">SP: <span class="rec rec-replace">12R</span> <span class="rec rec-keep">31K</span> <span class="rec rec-marginal">8M</span></div>
+    </div></div>
+  </div>
+
+  <div class="summary">
+    <div class="stat"><div class="k">Optimal monthly savings (on-demand)</div><div class="v" style="color:#047857">$42,786<span style="font-size:11px;color:var(--muted);font-weight:400"> · $513,436/yr</span></div></div>
+    <div class="stat"><div class="k">Optimal monthly savings (1y Compute SP)</div><div class="v" style="color:#047857">$49,343<span style="font-size:11px;color:var(--muted);font-weight:400"> · $592,119/yr</span></div></div>
+    <div class="stat"><div class="k">Top per-NAT peak (90d)</div><div class="v">31.62 Gbps</div></div>
+    <div class="stat"><div class="k">Top per-NAT peak (recent)</div><div class="v">10.87 Gbps</div></div>
+  </div>
+
+  <section>
+    <h2>Monthly savings per VPC <span class="sub">conservative sizing · positive = replace pays off · sorted by savings</span></h2>
+    <div class="chart-wrap"><canvas id="savingsChart" height="918"></canvas></div>
+  </section>
+
+  <section>
+    <h2>Peak bandwidth per VPC <span class="sub">90-day peak (blue) vs last-15d peak (orange) · large gap = HISTORICAL flag</span></h2>
+    <div class="chart-wrap"><canvas id="bwChart" height="918"></canvas></div>
+  </section>
+
+  <section>
+    <h2>Per-account roll-up <span class="sub">EC2 cost = on-demand or 1y Compute SP No-Upfront + 8 GB gp3 root per instance</span></h2>
+    <div class="panel"><table>
+      <thead><tr>
+        <th>Cat</th><th>Profile</th><th>Region</th>
+        <th>VPCs</th><th>NATs</th>
+        <th>30d traffic</th>
+        <th>NAT $/mo</th>
+        <th>EC2 OD</th>
+        <th>EC2 SP</th>
+        <th>Sav OD</th>
+        <th>Sav SP</th>
+        <th>Action OD</th>
+        <th>Action SP</th>
+      </tr></thead>
+      <tbody>
+        
+        <tr>
+          <td><span class="badge net">Network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Frankfurt-General <span class="historical-mini">historical</span></td>
+          <td class="mono small">eu-central-1</td>
+          <td class="num">3</td>
+          <td class="num">9</td>
+          <td class="num small">433.6 TB</td>
+          <td class="num">$21,767</td>
+          <td class="num">$7,100</td>
+          <td class="num">$5,637</td>
+          <td class="num bold pos">$14,667</td>
+          <td class="num bold pos">$16,130</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge net">Network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-US-Ohio-General <span class="historical-mini">historical</span></td>
+          <td class="mono small">us-east-2</td>
+          <td class="num">3</td>
+          <td class="num">9</td>
+          <td class="num small">590.6 TB</td>
+          <td class="num">$25,579</td>
+          <td class="num">$12,462</td>
+          <td class="num">$9,031</td>
+          <td class="num bold pos">$13,116</td>
+          <td class="num bold pos">$16,548</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge net">Network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-AP-Sydney-General</td>
+          <td class="mono small">ap-southeast-2</td>
+          <td class="num">2</td>
+          <td class="num">6</td>
+          <td class="num small">150.2 TB</td>
+          <td class="num">$8,771</td>
+          <td class="num">$2,038</td>
+          <td class="num">$1,495</td>
+          <td class="num bold pos">$6,733</td>
+          <td class="num bold pos">$7,276</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-London-Shoptimised-Production <span class="historical-mini">historical</span></td>
+          <td class="mono small">eu-west-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">109.7 TB</td>
+          <td class="num">$6,451</td>
+          <td class="num">$4,923</td>
+          <td class="num">$3,894</td>
+          <td class="num bold pos">$1,528</td>
+          <td class="num bold pos">$2,557</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-London-ENT-Gameboost</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">28.2 TB</td>
+          <td class="num">$1,441</td>
+          <td class="num">$617</td>
+          <td class="num">$489</td>
+          <td class="num bold pos">$824</td>
+          <td class="num bold pos">$953</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-KaTom-Restaur...-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">4.6 TB</td>
+          <td class="num">$295</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold pos">$34</td>
+          <td class="num bold pos">$105</td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Frankfurt-ENT-Lumos</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">7.9 TB</td>
+          <td class="num">$510</td>
+          <td class="num">$593</td>
+          <td class="num">$471</td>
+          <td class="num bold neg">-$83</td>
+          <td class="num bold pos">$39</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-AP-Singapore-AIO-Wireless-Production</td>
+          <td class="mono small">ap-southeast-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">1.3 TB</td>
+          <td class="num">$208</td>
+          <td class="num">$300</td>
+          <td class="num">$233</td>
+          <td class="num bold neg">-$92</td>
+          <td class="num bold neg">-$25</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-Publica-Ia-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">1.3 TB</td>
+          <td class="num">$154</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$108</td>
+          <td class="num bold neg">-$36</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-GovAI-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">1.1 TB</td>
+          <td class="num">$144</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$117</td>
+          <td class="num bold neg">-$46</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-CA-Central-GovAI-Production</td>
+          <td class="mono small">ca-central-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">1.0 TB</td>
+          <td class="num">$155</td>
+          <td class="num">$286</td>
+          <td class="num">$221</td>
+          <td class="num bold neg">-$131</td>
+          <td class="num bold neg">-$66</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Davidson-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.7 TB</td>
+          <td class="num">$127</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$135</td>
+          <td class="num bold neg">-$63</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-Shuttleapp-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.6 TB</td>
+          <td class="num">$124</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$137</td>
+          <td class="num bold neg">-$66</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-Calibur-Production</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.6 TB</td>
+          <td class="num">$144</td>
+          <td class="num">$298</td>
+          <td class="num">$237</td>
+          <td class="num bold neg">-$154</td>
+          <td class="num bold neg">-$93</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestProd</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.6 TB</td>
+          <td class="num">$133</td>
+          <td class="num">$295</td>
+          <td class="num">$234</td>
+          <td class="num bold neg">-$163</td>
+          <td class="num bold neg">-$102</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-Rimsys-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.2 TB</td>
+          <td class="num">$85</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$177</td>
+          <td class="num bold neg">-$105</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-GAEM-Production</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">5.0 TB</td>
+          <td class="num">$346</td>
+          <td class="num">$593</td>
+          <td class="num">$471</td>
+          <td class="num bold neg">-$248</td>
+          <td class="num bold neg">-$126</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge net">Network</span></td>
+          <td class="mono">Cloud-Prod-AP-Northeast-1-General</td>
+          <td class="mono small">ap-northeast-1</td>
+          <td class="num">2</td>
+          <td class="num">6</td>
+          <td class="num small">1.0 TB</td>
+          <td class="num">$323</td>
+          <td class="num">$658</td>
+          <td class="num">$545</td>
+          <td class="num bold neg">-$335</td>
+          <td class="num bold neg">-$221</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Diagonal-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">1.5 TB</td>
+          <td class="num">$161</td>
+          <td class="num">$521</td>
+          <td class="num">$378</td>
+          <td class="num bold neg">-$359</td>
+          <td class="num bold neg">-$216</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Ireland-Trybe-Production</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">2.3 TB</td>
+          <td class="num">$203</td>
+          <td class="num">$588</td>
+          <td class="num">$467</td>
+          <td class="num bold neg">-$385</td>
+          <td class="num bold neg">-$263</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge net">Network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Ireland-General</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="num">2</td>
+          <td class="num">6</td>
+          <td class="num small">24.6 TB</td>
+          <td class="num">$1,372</td>
+          <td class="num">$1,763</td>
+          <td class="num">$1,398</td>
+          <td class="num bold neg">-$391</td>
+          <td class="num bold neg">-$26</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Foundry-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.7 TB</td>
+          <td class="num">$128</td>
+          <td class="num">$521</td>
+          <td class="num">$378</td>
+          <td class="num bold neg">-$393</td>
+          <td class="num bold neg">-$250</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Edverum-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.4 TB</td>
+          <td class="num">$94</td>
+          <td class="num">$521</td>
+          <td class="num">$378</td>
+          <td class="num bold neg">-$427</td>
+          <td class="num bold neg">-$284</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-AP-Sydney-ENT-Swyftx</td>
+          <td class="mono small">ap-southeast-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">1.9 TB</td>
+          <td class="num">$238</td>
+          <td class="num">$680</td>
+          <td class="num">$499</td>
+          <td class="num bold neg">-$442</td>
+          <td class="num bold neg">-$261</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-Bo-Battle-Arena-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.2 TB</td>
+          <td class="num">$60</td>
+          <td class="num">$521</td>
+          <td class="num">$378</td>
+          <td class="num bold neg">-$461</td>
+          <td class="num bold neg">-$318</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-LapSafe-Production</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.3 TB</td>
+          <td class="num">$128</td>
+          <td class="num">$593</td>
+          <td class="num">$471</td>
+          <td class="num bold neg">-$465</td>
+          <td class="num bold neg">-$343</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-London-Kin-Production</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.7 TB</td>
+          <td class="num">$140</td>
+          <td class="num">$617</td>
+          <td class="num">$489</td>
+          <td class="num bold neg">-$477</td>
+          <td class="num bold neg">-$349</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Ireland-Bayut-Production</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">4.4 TB</td>
+          <td class="num">$308</td>
+          <td class="num">$1,175</td>
+          <td class="num">$931</td>
+          <td class="num bold neg">-$866</td>
+          <td class="num bold neg">-$623</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Laravel-GTM-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">1.1 TB</td>
+          <td class="num">$145</td>
+          <td class="num">$1,040</td>
+          <td class="num">$754</td>
+          <td class="num bold neg">-$895</td>
+          <td class="num bold neg">-$609</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestDev</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.9 TB</td>
+          <td class="num">$145</td>
+          <td class="num">$1,175</td>
+          <td class="num">$931</td>
+          <td class="num bold neg">-$1,029</td>
+          <td class="num bold neg">-$786</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-Membirds-Production <span class="historical-mini">historical</span></td>
+          <td class="mono small">eu-central-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">0.7 TB</td>
+          <td class="num">$145</td>
+          <td class="num">$1,184</td>
+          <td class="num">$941</td>
+          <td class="num bold neg">-$1,039</td>
+          <td class="num bold neg">-$795</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge net">Network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-London-General <span class="historical-mini">historical</span></td>
+          <td class="mono small">eu-west-2</td>
+          <td class="num">3</td>
+          <td class="num">9</td>
+          <td class="num small">191.9 TB</td>
+          <td class="num">$9,394</td>
+          <td class="num">$10,464</td>
+          <td class="num">$8,277</td>
+          <td class="num bold neg">-$1,070</td>
+          <td class="num bold pos">$1,117</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge net">Network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-CA-Central-General</td>
+          <td class="mono small">ca-central-1</td>
+          <td class="num">2</td>
+          <td class="num">6</td>
+          <td class="num small">13.4 TB</td>
+          <td class="num">$846</td>
+          <td class="num">$2,273</td>
+          <td class="num">$1,754</td>
+          <td class="num bold neg">-$1,426</td>
+          <td class="num bold neg">-$908</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge net">Network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-AP-Singapore-General <span class="historical-mini">historical</span></td>
+          <td class="mono small">ap-southeast-1</td>
+          <td class="num">3</td>
+          <td class="num">9</td>
+          <td class="num small">83.0 TB</td>
+          <td class="num">$5,039</td>
+          <td class="num">$6,562</td>
+          <td class="num">$5,088</td>
+          <td class="num bold neg">-$1,523</td>
+          <td class="num bold neg">-$49</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge net">Network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-US-Virginia-General <span class="historical-mini">historical</span></td>
+          <td class="mono small">us-east-1</td>
+          <td class="num">2</td>
+          <td class="num">6</td>
+          <td class="num small">123.9 TB</td>
+          <td class="num">$5,788</td>
+          <td class="num">$8,308</td>
+          <td class="num">$6,021</td>
+          <td class="num bold neg">-$2,520</td>
+          <td class="num bold neg">-$233</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-CMS-Max-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">6.1 TB</td>
+          <td class="num">$361</td>
+          <td class="num">$4,154</td>
+          <td class="num">$3,010</td>
+          <td class="num bold neg">-$3,793</td>
+          <td class="num bold neg">-$2,649</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-Sportmonks-Production</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">13.7 TB</td>
+          <td class="num">$381</td>
+          <td class="num">$4,731</td>
+          <td class="num">$3,756</td>
+          <td class="num bold neg">-$4,350</td>
+          <td class="num bold neg">-$3,374</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-London-Superscript-Production</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="num">1</td>
+          <td class="num">3</td>
+          <td class="num small">2.8 TB</td>
+          <td class="num">$240</td>
+          <td class="num">$4,923</td>
+          <td class="num">$3,894</td>
+          <td class="num bold neg">-$4,683</td>
+          <td class="num bold neg">-$3,654</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Per-VPC detail <span class="sub">primary view · conservative sizing · two cost variants: on-demand (OD) vs 1-year No-Upfront Compute Savings Plan (SP)</span></h2>
+    <div class="panel"><table>
+      <thead><tr>
+        <th>Cat</th><th>Profile</th><th>Region</th><th>VPC</th>
+        <th>NAT/AZ</th>
+        <th>30d traffic (share)</th>
+        <th>90d peak</th>
+        <th>Recent peak</th>
+        <th>Worst kpps</th>
+        <th>c8gn (cons)</th>
+        <th>c8gn (recent)</th>
+        <th>NAT $/mo</th>
+        <th>EC2 OD</th>
+        <th>EC2 SP</th>
+        <th>Sav OD</th>
+        <th>Sav SP</th>
+        <th>Act OD</th>
+        <th>Act SP</th>
+      </tr></thead>
+      <tbody>
+        
+        <tr>
+          <td><span class="badge cluster">cluster-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="mono">vpc-03b697f4376561b71</td>
+          <td class="num">3/3</td>
+          <td class="num small">392.8 TB <span class="muted">(91%)</span></td>
+          <td class="num bold">9.73</td>
+          <td class="num">5.97 </td>
+          <td class="num">404</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$19,527</td>
+          <td class="num">$4,731</td>
+          <td class="num">$3,756</td>
+          <td class="num bold pos">$14,795</td>
+          <td class="num bold pos">$15,771</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge cluster">cluster-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-0467f292c845fbd5c</td>
+          <td class="num">3/3</td>
+          <td class="num small">395.8 TB <span class="muted">(67%)</span></td>
+          <td class="num bold">14.89</td>
+          <td class="num">2.51 <span class="historical" title="90d peak is 6× the recent (15d) peak — historical only">HISTORICAL</span></td>
+          <td class="num">609</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$17,044</td>
+          <td class="num">$4,154</td>
+          <td class="num">$3,010</td>
+          <td class="num bold pos">$12,890</td>
+          <td class="num bold pos">$14,034</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge cluster">cluster-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-AP-Sydney-General</td>
+          <td class="mono small">ap-southeast-2</td>
+          <td class="mono">vpc-0c14a11113328de54</td>
+          <td class="num">3/3</td>
+          <td class="num small">138.4 TB <span class="muted">(92%)</span></td>
+          <td class="num bold">2.91</td>
+          <td class="num">1.15 </td>
+          <td class="num">167</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.xlarge</span></td>
+          <td class="num">$7,973</td>
+          <td class="num">$1,358</td>
+          <td class="num">$996</td>
+          <td class="num bold pos">$6,615</td>
+          <td class="num bold pos">$6,977</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge services">services-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-0f102a2a5170a50f1</td>
+          <td class="num">3/3</td>
+          <td class="num small">176.6 TB <span class="muted">(30%)</span></td>
+          <td class="num bold">11.15</td>
+          <td class="num">7.65 </td>
+          <td class="num">532</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$7,656</td>
+          <td class="num">$4,154</td>
+          <td class="num">$3,010</td>
+          <td class="num bold pos">$3,502</td>
+          <td class="num bold pos">$4,646</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge cluster">cluster-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="mono">vpc-0b4afe0f44454661e</td>
+          <td class="num">3/3</td>
+          <td class="num small">152.2 TB <span class="muted">(79%)</span></td>
+          <td class="num bold">5.57</td>
+          <td class="num">4.14 </td>
+          <td class="num">264</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$7,301</td>
+          <td class="num">$4,923</td>
+          <td class="num">$3,894</td>
+          <td class="num bold pos">$2,378</td>
+          <td class="num bold pos">$3,407</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-London-Shoptimised-Production</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="mono">vpc-0ffbe4be2a5b5eaa4</td>
+          <td class="num">3/3</td>
+          <td class="num small">109.7 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">31.62</td>
+          <td class="num">0.80 <span class="historical" title="90d peak is 40× the recent (15d) peak — historical only">HISTORICAL</span></td>
+          <td class="num">2,008</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$6,451</td>
+          <td class="num">$4,923</td>
+          <td class="num">$3,894</td>
+          <td class="num bold pos">$1,528</td>
+          <td class="num bold pos">$2,557</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-London-ENT-Gameboost</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="mono">vpc-0f04a5dc8f97b3c4f</td>
+          <td class="num">3/3</td>
+          <td class="num small">28.2 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.46</td>
+          <td class="num">1.46 </td>
+          <td class="num">90</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$1,441</td>
+          <td class="num">$617</td>
+          <td class="num">$489</td>
+          <td class="num bold pos">$824</td>
+          <td class="num bold pos">$953</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge services">services-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-AP-Sydney-General</td>
+          <td class="mono small">ap-southeast-2</td>
+          <td class="mono">vpc-01ab840d8622fa196</td>
+          <td class="num">3/3</td>
+          <td class="num small">11.8 TB <span class="muted">(8%)</span></td>
+          <td class="num bold">1.37</td>
+          <td class="num">1.37 </td>
+          <td class="num">113</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$798</td>
+          <td class="num">$680</td>
+          <td class="num">$499</td>
+          <td class="num bold pos">$119</td>
+          <td class="num bold pos">$299</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge services">services-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="mono">vpc-0aadc56da7d674c30</td>
+          <td class="num">3/3</td>
+          <td class="num small">23.8 TB <span class="muted">(5%)</span></td>
+          <td class="num bold">2.06</td>
+          <td class="num">2.06 </td>
+          <td class="num">117</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$1,287</td>
+          <td class="num">$1,184</td>
+          <td class="num">$941</td>
+          <td class="num bold pos">$103</td>
+          <td class="num bold pos">$346</td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-KaTom-Restaur...-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="mono">vpc-0f97a8a77d7f0ce69</td>
+          <td class="num">3/3</td>
+          <td class="num small">4.6 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.66</td>
+          <td class="num">0.66 </td>
+          <td class="num">42</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$295</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold pos">$34</td>
+          <td class="num bold pos">$105</td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge db">db-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">ap-southeast-1</td>
+          <td class="mono">vpc-010479db7b19c484c</td>
+          <td class="num">3/3</td>
+          <td class="num small">8.0 TB <span class="muted">(10%)</span></td>
+          <td class="num bold">1.20</td>
+          <td class="num">0.10 <span class="historical" title="90d peak is 12× the recent (15d) peak — historical only">HISTORICAL</span></td>
+          <td class="num">103</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$574</td>
+          <td class="num">$598</td>
+          <td class="num">$464</td>
+          <td class="num bold neg">-$24</td>
+          <td class="num bold pos">$110</td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Frankfurt-ENT-Lumos</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="mono">vpc-0b0b643f7c2d5dbb4</td>
+          <td class="num">3/3</td>
+          <td class="num small">7.9 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.10</td>
+          <td class="num">1.10 </td>
+          <td class="num">54</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$510</td>
+          <td class="num">$593</td>
+          <td class="num">$471</td>
+          <td class="num bold neg">-$83</td>
+          <td class="num bold pos">$39</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-AP-Singapore-AIO-Wireless-Production</td>
+          <td class="mono small">ap-southeast-1</td>
+          <td class="mono">vpc-0f73b7ee008c96acf</td>
+          <td class="num">3/3</td>
+          <td class="num small">1.3 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.37</td>
+          <td class="num">0.37 </td>
+          <td class="num">22</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$208</td>
+          <td class="num">$300</td>
+          <td class="num">$233</td>
+          <td class="num bold neg">-$92</td>
+          <td class="num bold neg">-$25</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-Publica-Ia-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="mono">vpc-0fa4a52fbbe0b3bba</td>
+          <td class="num">3/3</td>
+          <td class="num small">1.3 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.94</td>
+          <td class="num">0.43 </td>
+          <td class="num">51</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$154</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$108</td>
+          <td class="num bold neg">-$36</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-GovAI-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-0d72b9d92e263157d</td>
+          <td class="num">3/3</td>
+          <td class="num small">1.1 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.82</td>
+          <td class="num">0.74 </td>
+          <td class="num">33</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$144</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$117</td>
+          <td class="num bold neg">-$46</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge db">db-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="mono">vpc-0a97c73c5156003dc</td>
+          <td class="num">3/3</td>
+          <td class="num small">8.1 TB <span class="muted">(4%)</span></td>
+          <td class="num bold">1.96</td>
+          <td class="num">0.33 <span class="historical" title="90d peak is 6× the recent (15d) peak — historical only">HISTORICAL</span></td>
+          <td class="num">152</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$491</td>
+          <td class="num">$617</td>
+          <td class="num">$489</td>
+          <td class="num bold neg">-$127</td>
+          <td class="num bold pos">$2</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-CA-Central-GovAI-Production</td>
+          <td class="mono small">ca-central-1</td>
+          <td class="mono">vpc-0024710aad56d84b6</td>
+          <td class="num">3/3</td>
+          <td class="num small">1.0 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.57</td>
+          <td class="num">0.57 </td>
+          <td class="num">40</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$155</td>
+          <td class="num">$286</td>
+          <td class="num">$221</td>
+          <td class="num bold neg">-$131</td>
+          <td class="num bold neg">-$66</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Davidson-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-08b83728c8ce7a57c</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.7 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.39</td>
+          <td class="num">0.39 </td>
+          <td class="num">13</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$127</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$135</td>
+          <td class="num bold neg">-$63</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-Shuttleapp-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="mono">vpc-02a24679f1f57f4ec</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.6 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.42</td>
+          <td class="num">0.34 </td>
+          <td class="num">26</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$124</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$137</td>
+          <td class="num bold neg">-$66</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-Calibur-Production</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="mono">vpc-09b4b7174a9f2015a</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.6 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.51</td>
+          <td class="num">0.51 </td>
+          <td class="num">15</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$144</td>
+          <td class="num">$298</td>
+          <td class="num">$237</td>
+          <td class="num bold neg">-$154</td>
+          <td class="num bold neg">-$93</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge services">services-network</span></td>
+          <td class="mono">Cloud-Prod-AP-Northeast-1-General</td>
+          <td class="mono small">ap-northeast-1</td>
+          <td class="mono">vpc-0697f2ad8e021171a</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.6 TB <span class="muted">(65%)</span></td>
+          <td class="num bold">0.35</td>
+          <td class="num">0.22 </td>
+          <td class="num">20</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$170</td>
+          <td class="num">$329</td>
+          <td class="num">$272</td>
+          <td class="num bold neg">-$159</td>
+          <td class="num bold neg">-$102</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge cluster">cluster-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Ireland-General</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="mono">vpc-04228870112f3224a</td>
+          <td class="num">3/3</td>
+          <td class="num small">19.2 TB <span class="muted">(78%)</span></td>
+          <td class="num bold">3.08</td>
+          <td class="num">1.39 </td>
+          <td class="num">125</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.xlarge</span></td>
+          <td class="num">$1,016</td>
+          <td class="num">$1,175</td>
+          <td class="num">$931</td>
+          <td class="num bold neg">-$159</td>
+          <td class="num bold pos">$85</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-replace">REPLACE</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestProd</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="mono">vpc-040a9666283f2adc2</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.6 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.57</td>
+          <td class="num">0.57 </td>
+          <td class="num">27</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$133</td>
+          <td class="num">$295</td>
+          <td class="num">$234</td>
+          <td class="num bold neg">-$163</td>
+          <td class="num bold neg">-$102</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge cluster">cluster-network</span></td>
+          <td class="mono">Cloud-Prod-AP-Northeast-1-General</td>
+          <td class="mono small">ap-northeast-1</td>
+          <td class="mono">vpc-0f26238b7734ab510</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.3 TB <span class="muted">(35%)</span></td>
+          <td class="num bold">0.36</td>
+          <td class="num">0.33 </td>
+          <td class="num">23</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$153</td>
+          <td class="num">$329</td>
+          <td class="num">$272</td>
+          <td class="num bold neg">-$176</td>
+          <td class="num bold neg">-$119</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-Rimsys-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="mono">vpc-0786f10986ff4bcfb</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.2 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">0.32</td>
+          <td class="num">0.28 </td>
+          <td class="num">24</td>
+          <td><span class="size size-s">c8gn.large</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$85</td>
+          <td class="num">$261</td>
+          <td class="num">$190</td>
+          <td class="num bold neg">-$177</td>
+          <td class="num bold neg">-$105</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge db">db-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="mono">vpc-009f37b106cf0b399</td>
+          <td class="num">3/3</td>
+          <td class="num small">17.0 TB <span class="muted">(4%)</span></td>
+          <td class="num bold">2.34</td>
+          <td class="num">0.12 <span class="historical" title="90d peak is 20× the recent (15d) peak — historical only">HISTORICAL</span></td>
+          <td class="num">149</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$953</td>
+          <td class="num">$1,184</td>
+          <td class="num">$941</td>
+          <td class="num bold neg">-$231</td>
+          <td class="num bold pos">$12</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge services">services-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Ireland-General</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="mono">vpc-040cc62ec6ee9cb61</td>
+          <td class="num">3/3</td>
+          <td class="num small">5.3 TB <span class="muted">(22%)</span></td>
+          <td class="num bold">1.29</td>
+          <td class="num">1.29 </td>
+          <td class="num">109</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$356</td>
+          <td class="num">$588</td>
+          <td class="num">$467</td>
+          <td class="num bold neg">-$232</td>
+          <td class="num bold neg">-$110</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-GAEM-Production</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="mono">vpc-09a2ff4417fd4841b</td>
+          <td class="num">3/3</td>
+          <td class="num small">5.0 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.43</td>
+          <td class="num">1.43 </td>
+          <td class="num">59</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$346</td>
+          <td class="num">$593</td>
+          <td class="num">$471</td>
+          <td class="num bold neg">-$248</td>
+          <td class="num bold neg">-$126</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Diagonal-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-04cc3fec59ef2a96a</td>
+          <td class="num">3/3</td>
+          <td class="num small">1.5 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.39</td>
+          <td class="num">0.84 </td>
+          <td class="num">52</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$161</td>
+          <td class="num">$521</td>
+          <td class="num">$378</td>
+          <td class="num bold neg">-$359</td>
+          <td class="num bold neg">-$216</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Ireland-Trybe-Production</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="mono">vpc-0e0261caeeae6798d</td>
+          <td class="num">3/3</td>
+          <td class="num small">2.3 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.08</td>
+          <td class="num">1.05 </td>
+          <td class="num">58</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$203</td>
+          <td class="num">$588</td>
+          <td class="num">$467</td>
+          <td class="num bold neg">-$385</td>
+          <td class="num bold neg">-$263</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Foundry-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-0bf3a5a7b04ca26ba</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.7 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.06</td>
+          <td class="num">0.47 </td>
+          <td class="num">48</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$128</td>
+          <td class="num">$521</td>
+          <td class="num">$378</td>
+          <td class="num bold neg">-$393</td>
+          <td class="num bold neg">-$250</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge services">services-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">ap-southeast-1</td>
+          <td class="mono">vpc-0a57c9b56037fa30c</td>
+          <td class="num">3/3</td>
+          <td class="num small">11.8 TB <span class="muted">(14%)</span></td>
+          <td class="num bold">3.02</td>
+          <td class="num">1.25 </td>
+          <td class="num">158</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.xlarge</span></td>
+          <td class="num">$791</td>
+          <td class="num">$1,194</td>
+          <td class="num">$926</td>
+          <td class="num bold neg">-$403</td>
+          <td class="num bold neg">-$135</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Edverum-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-0b41f4fbe61e99e39</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.4 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.44</td>
+          <td class="num">1.44 </td>
+          <td class="num">58</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$94</td>
+          <td class="num">$521</td>
+          <td class="num">$378</td>
+          <td class="num bold neg">-$427</td>
+          <td class="num bold neg">-$284</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-AP-Sydney-ENT-Swyftx</td>
+          <td class="mono small">ap-southeast-2</td>
+          <td class="mono">vpc-0f7ac5d9546094f47</td>
+          <td class="num">3/3</td>
+          <td class="num small">1.9 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.78</td>
+          <td class="num">0.99 </td>
+          <td class="num">68</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$238</td>
+          <td class="num">$680</td>
+          <td class="num">$499</td>
+          <td class="num bold neg">-$442</td>
+          <td class="num bold neg">-$261</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Virginia-Bo-Battle-Arena-Production</td>
+          <td class="mono small">us-east-1</td>
+          <td class="mono">vpc-0d9b9b031fdadcb2d</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.2 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.16</td>
+          <td class="num">0.43 </td>
+          <td class="num">53</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$60</td>
+          <td class="num">$521</td>
+          <td class="num">$378</td>
+          <td class="num bold neg">-$461</td>
+          <td class="num bold neg">-$318</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-LapSafe-Production</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="mono">vpc-01be90104727f4c56</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.3 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.18</td>
+          <td class="num">0.65 </td>
+          <td class="num">46</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$128</td>
+          <td class="num">$593</td>
+          <td class="num">$471</td>
+          <td class="num bold neg">-$465</td>
+          <td class="num bold neg">-$343</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-London-Kin-Production</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="mono">vpc-0742e38524e41e088</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.7 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">1.02</td>
+          <td class="num">1.02 </td>
+          <td class="num">55</td>
+          <td><span class="size size-s">c8gn.xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$140</td>
+          <td class="num">$617</td>
+          <td class="num">$489</td>
+          <td class="num bold neg">-$477</td>
+          <td class="num bold neg">-$349</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge cluster">cluster-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-CA-Central-General</td>
+          <td class="mono small">ca-central-1</td>
+          <td class="mono">vpc-0dbafa620a250c237</td>
+          <td class="num">3/3</td>
+          <td class="num small">8.7 TB <span class="muted">(65%)</span></td>
+          <td class="num bold">2.98</td>
+          <td class="num">1.24 </td>
+          <td class="num">213</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.xlarge</span></td>
+          <td class="num">$521</td>
+          <td class="num">$1,136</td>
+          <td class="num">$877</td>
+          <td class="num bold neg">-$616</td>
+          <td class="num bold neg">-$357</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge services">services-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-CA-Central-General</td>
+          <td class="mono small">ca-central-1</td>
+          <td class="mono">vpc-0235b8b3cdf4659e3</td>
+          <td class="num">3/3</td>
+          <td class="num small">4.6 TB <span class="muted">(35%)</span></td>
+          <td class="num bold">2.25</td>
+          <td class="num">1.45 </td>
+          <td class="num">193</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.xlarge</span></td>
+          <td class="num">$326</td>
+          <td class="num">$1,136</td>
+          <td class="num">$877</td>
+          <td class="num bold neg">-$811</td>
+          <td class="num bold neg">-$552</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Ireland-Bayut-Production</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="mono">vpc-02034d9982b35078f</td>
+          <td class="num">3/3</td>
+          <td class="num small">4.4 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">2.31</td>
+          <td class="num">1.90 </td>
+          <td class="num">124</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$308</td>
+          <td class="num">$1,175</td>
+          <td class="num">$931</td>
+          <td class="num bold neg">-$866</td>
+          <td class="num bold neg">-$623</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-Laravel-GTM-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-075213ad088d2c450</td>
+          <td class="num">3/3</td>
+          <td class="num small">1.1 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">2.24</td>
+          <td class="num">0.90 </td>
+          <td class="num">95</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$145</td>
+          <td class="num">$1,040</td>
+          <td class="num">$754</td>
+          <td class="num bold neg">-$895</td>
+          <td class="num bold neg">-$609</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestDev</td>
+          <td class="mono small">eu-west-1</td>
+          <td class="mono">vpc-0016e762d0c5ec7ea</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.9 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">2.34</td>
+          <td class="num">1.59 </td>
+          <td class="num">102</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.xlarge</span></td>
+          <td class="num">$145</td>
+          <td class="num">$1,175</td>
+          <td class="num">$931</td>
+          <td class="num bold neg">-$1,029</td>
+          <td class="num bold neg">-$786</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-Membirds-Production</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="mono">vpc-0a5f503dc8377f7d9</td>
+          <td class="num">3/3</td>
+          <td class="num small">0.7 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">2.13</td>
+          <td class="num">0.37 <span class="historical" title="90d peak is 6× the recent (15d) peak — historical only">HISTORICAL</span></td>
+          <td class="num">104</td>
+          <td><span class="size size-m">c8gn.2xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$145</td>
+          <td class="num">$1,184</td>
+          <td class="num">$941</td>
+          <td class="num bold neg">-$1,039</td>
+          <td class="num bold neg">-$795</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge cluster">cluster-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">ap-southeast-1</td>
+          <td class="mono">vpc-0630d301434fe64cf</td>
+          <td class="num">3/3</td>
+          <td class="num small">63.2 TB <span class="muted">(76%)</span></td>
+          <td class="num bold">3.41</td>
+          <td class="num">2.03 </td>
+          <td class="num">162</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-m">c8gn.2xlarge</span></td>
+          <td class="num">$3,673</td>
+          <td class="num">$4,770</td>
+          <td class="num">$3,698</td>
+          <td class="num bold neg">-$1,097</td>
+          <td class="num bold neg">-$24</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge cluster">cluster-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-US-Virginia-General</td>
+          <td class="mono small">us-east-1</td>
+          <td class="mono">vpc-0750ef78168ab30d7</td>
+          <td class="num">3/3</td>
+          <td class="num small">63.7 TB <span class="muted">(51%)</span></td>
+          <td class="num bold">4.99</td>
+          <td class="num">0.95 <span class="historical" title="90d peak is 5× the recent (15d) peak — historical only">HISTORICAL</span></td>
+          <td class="num">383</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.xlarge</span></td>
+          <td class="num">$2,971</td>
+          <td class="num">$4,154</td>
+          <td class="num">$3,010</td>
+          <td class="num bold neg">-$1,183</td>
+          <td class="num bold neg">-$39</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-marginal">MARGINAL</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge services">services-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-US-Virginia-General</td>
+          <td class="mono small">us-east-1</td>
+          <td class="mono">vpc-0e509c0442cbd367c</td>
+          <td class="num">3/3</td>
+          <td class="num small">60.2 TB <span class="muted">(49%)</span></td>
+          <td class="num bold">4.70</td>
+          <td class="num">4.70 </td>
+          <td class="num">339</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$2,817</td>
+          <td class="num">$4,154</td>
+          <td class="num">$3,010</td>
+          <td class="num bold neg">-$1,338</td>
+          <td class="num bold neg">-$194</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge db">db-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-003b04e78ebc87a67</td>
+          <td class="num">3/3</td>
+          <td class="num small">18.3 TB <span class="muted">(3%)</span></td>
+          <td class="num bold">4.07</td>
+          <td class="num">0.18 <span class="historical" title="90d peak is 22× the recent (15d) peak — historical only">HISTORICAL</span></td>
+          <td class="num">248</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.large</span></td>
+          <td class="num">$879</td>
+          <td class="num">$4,154</td>
+          <td class="num">$3,010</td>
+          <td class="num bold neg">-$3,275</td>
+          <td class="num bold neg">-$2,132</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge services">services-network</span></td>
+          <td class="mono">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="mono">vpc-0cc2b61b5e6027d6f</td>
+          <td class="num">3/3</td>
+          <td class="num small">31.6 TB <span class="muted">(16%)</span></td>
+          <td class="num bold">7.52</td>
+          <td class="num">7.52 </td>
+          <td class="num">398</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$1,602</td>
+          <td class="num">$4,923</td>
+          <td class="num">$3,894</td>
+          <td class="num bold neg">-$3,321</td>
+          <td class="num bold neg">-$2,292</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-US-Ohio-CMS-Max-Production</td>
+          <td class="mono small">us-east-2</td>
+          <td class="mono">vpc-02fe9c02055e0af95</td>
+          <td class="num">3/3</td>
+          <td class="num small">6.1 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">4.69</td>
+          <td class="num">1.95 </td>
+          <td class="num">179</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-s">c8gn.xlarge</span></td>
+          <td class="num">$361</td>
+          <td class="num">$4,154</td>
+          <td class="num">$3,010</td>
+          <td class="num bold neg">-$3,793</td>
+          <td class="num bold neg">-$2,649</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-Frankfurt-Sportmonks-Production</td>
+          <td class="mono small">eu-central-1</td>
+          <td class="mono">vpc-07fbe55713c131dd6</td>
+          <td class="num">3/3</td>
+          <td class="num small">13.7 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">10.87</td>
+          <td class="num">10.87 </td>
+          <td class="num">469</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="same">(same)</span></td>
+          <td class="num">$381</td>
+          <td class="num">$4,731</td>
+          <td class="num">$3,756</td>
+          <td class="num bold neg">-$4,350</td>
+          <td class="num bold neg">-$3,374</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+
+        <tr>
+          <td><span class="badge ent">Enterprise</span></td>
+          <td class="mono">Cloud-Prod-EU-London-Superscript-Production</td>
+          <td class="mono small">eu-west-2</td>
+          <td class="mono">vpc-0aff3086aedd59473</td>
+          <td class="num">3/3</td>
+          <td class="num small">2.8 TB <span class="muted">(100%)</span></td>
+          <td class="num bold">4.39</td>
+          <td class="num">3.04 </td>
+          <td class="num">213</td>
+          <td><span class="size size-l">c8gn.8xlarge</span><div class="sub-mini">×3 AZ</div></td>
+          <td><span class="size size-m">c8gn.2xlarge</span></td>
+          <td class="num">$240</td>
+          <td class="num">$4,923</td>
+          <td class="num">$3,894</td>
+          <td class="num bold neg">-$4,683</td>
+          <td class="num bold neg">-$3,654</td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+          <td><span class="rec rec-keep">KEEP</span></td>
+        </tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>All NAT Gateways <span class="sub">90-day vs last-15d peak · 30-day bytes total</span></h2>
+    <details>
+      <summary>Show / hide (153 rows)</summary>
+      <div class="panel-body panel"><table>
+        <thead><tr>
+          <th>Profile</th><th>VPC</th><th>NAT</th><th>AZ</th>
+          <th>90d Gbps</th><th>15d Gbps</th><th>30d TB</th><th>Peak kpps</th><th>Drops</th>
+        </tr></thead>
+        <tbody>
+          
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-London-Shoptimised-Production</td>
+          <td class="mono small">vpc-0ffbe4be2a5b5eaa4</td>
+          <td class="mono small">nat-0c6d7d1a95c5cc6db</td>
+          <td class="mono">eu-west-2b</td>
+          <td class="num">31.62</td>
+          <td class="num">0.33</td>
+          <td class="num">47.2</td>
+          <td class="num">2,008</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-London-Shoptimised-Production</td>
+          <td class="mono small">vpc-0ffbe4be2a5b5eaa4</td>
+          <td class="mono small">nat-0500640b22e54f4fa</td>
+          <td class="mono">eu-west-2c</td>
+          <td class="num">20.82</td>
+          <td class="num">0.41</td>
+          <td class="num">47.4</td>
+          <td class="num">1,008</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">vpc-0467f292c845fbd5c</td>
+          <td class="mono small">nat-0a16dfbd3b9990e25</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">14.89</td>
+          <td class="num">2.51</td>
+          <td class="num">157.9</td>
+          <td class="num">609</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">vpc-0467f292c845fbd5c</td>
+          <td class="mono small">nat-0324d884afefa8714</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">13.09</td>
+          <td class="num">2.17</td>
+          <td class="num">159.7</td>
+          <td class="num">460</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">vpc-0f102a2a5170a50f1</td>
+          <td class="mono small">nat-0da3b2b6b385f5166</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">11.15</td>
+          <td class="num">4.66</td>
+          <td class="num">72.4</td>
+          <td class="num">532</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-Sportmonks-Production</td>
+          <td class="mono small">vpc-07fbe55713c131dd6</td>
+          <td class="mono small">nat-0b22b2ca5a1b7c338</td>
+          <td class="mono">eu-central-1a</td>
+          <td class="num">10.87</td>
+          <td class="num">10.87</td>
+          <td class="num">4.2</td>
+          <td class="num">469</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-Sportmonks-Production</td>
+          <td class="mono small">vpc-07fbe55713c131dd6</td>
+          <td class="mono small">nat-06fd4ab0811084f8d</td>
+          <td class="mono">eu-central-1c</td>
+          <td class="num">9.74</td>
+          <td class="num">9.74</td>
+          <td class="num">5.3</td>
+          <td class="num">395</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">vpc-03b697f4376561b71</td>
+          <td class="mono small">nat-0a3f884f9f2a5f009</td>
+          <td class="mono">eu-central-1c</td>
+          <td class="num">9.73</td>
+          <td class="num">3.86</td>
+          <td class="num">177.0</td>
+          <td class="num">404</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-Sportmonks-Production</td>
+          <td class="mono small">vpc-07fbe55713c131dd6</td>
+          <td class="mono small">nat-0d7a952f7d2722212</td>
+          <td class="mono">eu-central-1b</td>
+          <td class="num">9.43</td>
+          <td class="num">9.43</td>
+          <td class="num">4.2</td>
+          <td class="num">384</td>
+          <td class="num small">18</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">vpc-0467f292c845fbd5c</td>
+          <td class="mono small">nat-019ca579aa1d2b41a</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">8.97</td>
+          <td class="num">1.19</td>
+          <td class="num">78.3</td>
+          <td class="num">380</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">vpc-0f102a2a5170a50f1</td>
+          <td class="mono small">nat-0989fec145bc65c69</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">7.82</td>
+          <td class="num">7.65</td>
+          <td class="num">88.1</td>
+          <td class="num">409</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">vpc-0f102a2a5170a50f1</td>
+          <td class="mono small">nat-06e8e9f64e7668e62</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">7.70</td>
+          <td class="num">1.52</td>
+          <td class="num">16.0</td>
+          <td class="num">430</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">vpc-0cc2b61b5e6027d6f</td>
+          <td class="mono small">nat-069e62703c0dcbfff</td>
+          <td class="mono">eu-west-2b</td>
+          <td class="num">7.52</td>
+          <td class="num">7.52</td>
+          <td class="num">18.6</td>
+          <td class="num">398</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">vpc-03b697f4376561b71</td>
+          <td class="mono small">nat-0c59a3e1373b977e6</td>
+          <td class="mono">eu-central-1b</td>
+          <td class="num">7.19</td>
+          <td class="num">5.97</td>
+          <td class="num">128.1</td>
+          <td class="num">358</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">vpc-03b697f4376561b71</td>
+          <td class="mono small">nat-01f0a78eee8fdc411</td>
+          <td class="mono">eu-central-1a</td>
+          <td class="num">5.63</td>
+          <td class="num">2.87</td>
+          <td class="num">87.7</td>
+          <td class="num">275</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">vpc-0b4afe0f44454661e</td>
+          <td class="mono small">nat-01d2173f1ec6ae940</td>
+          <td class="mono">eu-west-2b</td>
+          <td class="num">5.57</td>
+          <td class="num">4.14</td>
+          <td class="num">75.1</td>
+          <td class="num">264</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Virginia-General</td>
+          <td class="mono small">vpc-0750ef78168ab30d7</td>
+          <td class="mono small">nat-064e08bc287d46e8a</td>
+          <td class="mono">us-east-1a</td>
+          <td class="num">4.99</td>
+          <td class="num">0.95</td>
+          <td class="num">17.1</td>
+          <td class="num">383</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Virginia-General</td>
+          <td class="mono small">vpc-0e509c0442cbd367c</td>
+          <td class="mono small">nat-0f1602c4afb1b2d85</td>
+          <td class="mono">us-east-1a</td>
+          <td class="num">4.70</td>
+          <td class="num">4.70</td>
+          <td class="num">17.8</td>
+          <td class="num">339</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-CMS-Max-Production</td>
+          <td class="mono small">vpc-02fe9c02055e0af95</td>
+          <td class="mono small">nat-0bc802f5ba9d05b44</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">4.69</td>
+          <td class="num">1.76</td>
+          <td class="num">1.7</td>
+          <td class="num">178</td>
+          <td class="num small">2,678</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-London-Shoptimised-Production</td>
+          <td class="mono small">vpc-0ffbe4be2a5b5eaa4</td>
+          <td class="mono small">nat-0f7b7874ce6494a85</td>
+          <td class="mono">eu-west-2a</td>
+          <td class="num">4.62</td>
+          <td class="num">0.80</td>
+          <td class="num">15.2</td>
+          <td class="num">390</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Virginia-General</td>
+          <td class="mono small">vpc-0e509c0442cbd367c</td>
+          <td class="mono small">nat-012d9482438d1012c</td>
+          <td class="mono">us-east-1c</td>
+          <td class="num">4.49</td>
+          <td class="num">4.49</td>
+          <td class="num">35.0</td>
+          <td class="num">335</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-London-Superscript-Production</td>
+          <td class="mono small">vpc-0aff3086aedd59473</td>
+          <td class="mono small">nat-0c080f4ed9673a6fb</td>
+          <td class="mono">eu-west-2b</td>
+          <td class="num">4.39</td>
+          <td class="num">1.04</td>
+          <td class="num">0.7</td>
+          <td class="num">213</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">vpc-0b4afe0f44454661e</td>
+          <td class="mono small">nat-0b044ea5f4856d0a8</td>
+          <td class="mono">eu-west-2c</td>
+          <td class="num">4.34</td>
+          <td class="num">1.29</td>
+          <td class="num">38.0</td>
+          <td class="num">217</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-CMS-Max-Production</td>
+          <td class="mono small">vpc-02fe9c02055e0af95</td>
+          <td class="mono small">nat-0bd068cc8c207b658</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">4.14</td>
+          <td class="num">1.95</td>
+          <td class="num">2.4</td>
+          <td class="num">179</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">vpc-003b04e78ebc87a67</td>
+          <td class="mono small">nat-0c108310c36bf3711</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">4.07</td>
+          <td class="num">0.18</td>
+          <td class="num">5.9</td>
+          <td class="num">248</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">vpc-0cc2b61b5e6027d6f</td>
+          <td class="mono small">nat-0902d5fefa31929a4</td>
+          <td class="mono">eu-west-2a</td>
+          <td class="num">3.88</td>
+          <td class="num">3.88</td>
+          <td class="num">12.6</td>
+          <td class="num">220</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Virginia-General</td>
+          <td class="mono small">vpc-0750ef78168ab30d7</td>
+          <td class="mono small">nat-01f8d09d61c1f9cdc</td>
+          <td class="mono">us-east-1b</td>
+          <td class="num">3.46</td>
+          <td class="num">0.73</td>
+          <td class="num">29.5</td>
+          <td class="num">286</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">vpc-0630d301434fe64cf</td>
+          <td class="mono small">nat-05551f68c4300fca9</td>
+          <td class="mono">ap-southeast-1b</td>
+          <td class="num">3.41</td>
+          <td class="num">1.97</td>
+          <td class="num">30.8</td>
+          <td class="num">162</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">vpc-0b4afe0f44454661e</td>
+          <td class="mono small">nat-00803812a08ed308d</td>
+          <td class="mono">eu-west-2a</td>
+          <td class="num">3.40</td>
+          <td class="num">3.14</td>
+          <td class="num">39.0</td>
+          <td class="num">180</td>
+          <td class="num small">9</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-General</td>
+          <td class="mono small">vpc-04228870112f3224a</td>
+          <td class="mono small">nat-038f263c59dfc61a6</td>
+          <td class="mono">eu-west-1a</td>
+          <td class="num">3.08</td>
+          <td class="num">0.26</td>
+          <td class="num">4.1</td>
+          <td class="num">110</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-London-Superscript-Production</td>
+          <td class="mono small">vpc-0aff3086aedd59473</td>
+          <td class="mono small">nat-070a52fd06a08ad93</td>
+          <td class="mono">eu-west-2c</td>
+          <td class="num">3.04</td>
+          <td class="num">3.04</td>
+          <td class="num">1.2</td>
+          <td class="num">141</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">vpc-0a57c9b56037fa30c</td>
+          <td class="mono small">nat-0e21bf4d2032293e0</td>
+          <td class="mono">ap-southeast-1a</td>
+          <td class="num">3.02</td>
+          <td class="num">1.14</td>
+          <td class="num">4.5</td>
+          <td class="num">158</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-CA-Central-General</td>
+          <td class="mono small">vpc-0dbafa620a250c237</td>
+          <td class="mono small">nat-06f9385b03df58a0b</td>
+          <td class="mono">ca-central-1d</td>
+          <td class="num">2.98</td>
+          <td class="num">1.24</td>
+          <td class="num">4.1</td>
+          <td class="num">213</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Sydney-General</td>
+          <td class="mono small">vpc-0c14a11113328de54</td>
+          <td class="mono small">nat-008a36621d69c3803</td>
+          <td class="mono">ap-southeast-2a</td>
+          <td class="num">2.91</td>
+          <td class="num">1.11</td>
+          <td class="num">48.5</td>
+          <td class="num">154</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-CMS-Max-Production</td>
+          <td class="mono small">vpc-02fe9c02055e0af95</td>
+          <td class="mono small">nat-07850a17224c6d234</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">2.88</td>
+          <td class="num">1.88</td>
+          <td class="num">2.0</td>
+          <td class="num">137</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">vpc-0630d301434fe64cf</td>
+          <td class="mono small">nat-0fef4ff6c3be27c26</td>
+          <td class="mono">ap-southeast-1a</td>
+          <td class="num">2.87</td>
+          <td class="num">1.78</td>
+          <td class="num">13.3</td>
+          <td class="num">143</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">vpc-003b04e78ebc87a67</td>
+          <td class="mono small">nat-0bd0e7109c2011aef</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">2.66</td>
+          <td class="num">0.13</td>
+          <td class="num">6.4</td>
+          <td class="num">169</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">vpc-0630d301434fe64cf</td>
+          <td class="mono small">nat-0b1ab27c805d32c85</td>
+          <td class="mono">ap-southeast-1c</td>
+          <td class="num">2.62</td>
+          <td class="num">2.03</td>
+          <td class="num">19.1</td>
+          <td class="num">126</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-General</td>
+          <td class="mono small">vpc-04228870112f3224a</td>
+          <td class="mono small">nat-0e579981284e020f7</td>
+          <td class="mono">eu-west-1b</td>
+          <td class="num">2.62</td>
+          <td class="num">0.19</td>
+          <td class="num">3.0</td>
+          <td class="num">100</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-General</td>
+          <td class="mono small">vpc-04228870112f3224a</td>
+          <td class="mono small">nat-08563db8c69503f9a</td>
+          <td class="mono">eu-west-1c</td>
+          <td class="num">2.54</td>
+          <td class="num">1.39</td>
+          <td class="num">12.1</td>
+          <td class="num">125</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Virginia-General</td>
+          <td class="mono small">vpc-0e509c0442cbd367c</td>
+          <td class="mono small">nat-0a7e6ce4b0cf9bf59</td>
+          <td class="mono">us-east-1b</td>
+          <td class="num">2.48</td>
+          <td class="num">2.48</td>
+          <td class="num">7.5</td>
+          <td class="num">210</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Sydney-General</td>
+          <td class="mono small">vpc-0c14a11113328de54</td>
+          <td class="mono small">nat-05aa19be807462eaf</td>
+          <td class="mono">ap-southeast-2c</td>
+          <td class="num">2.41</td>
+          <td class="num">1.15</td>
+          <td class="num">63.8</td>
+          <td class="num">167</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestDev</td>
+          <td class="mono small">vpc-0016e762d0c5ec7ea</td>
+          <td class="mono small">nat-0662295c02b1273e8</td>
+          <td class="mono">eu-west-1a</td>
+          <td class="num">2.34</td>
+          <td class="num">1.59</td>
+          <td class="num">0.6</td>
+          <td class="num">102</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">vpc-009f37b106cf0b399</td>
+          <td class="mono small">nat-06f329bad8a61aa99</td>
+          <td class="mono">eu-central-1b</td>
+          <td class="num">2.34</td>
+          <td class="num">0.10</td>
+          <td class="num">5.8</td>
+          <td class="num">113</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">vpc-0a57c9b56037fa30c</td>
+          <td class="mono small">nat-0865c17369658f7ef</td>
+          <td class="mono">ap-southeast-1c</td>
+          <td class="num">2.32</td>
+          <td class="num">1.25</td>
+          <td class="num">5.6</td>
+          <td class="num">131</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Ireland-Bayut-Production</td>
+          <td class="mono small">vpc-02034d9982b35078f</td>
+          <td class="mono small">nat-02e12dcee3efc4e2c</td>
+          <td class="mono">eu-west-1a</td>
+          <td class="num">2.31</td>
+          <td class="num">1.90</td>
+          <td class="num">1.8</td>
+          <td class="num">124</td>
+          <td class="num small">7</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-CA-Central-General</td>
+          <td class="mono small">vpc-0235b8b3cdf4659e3</td>
+          <td class="mono small">nat-06ba99ec747497b19</td>
+          <td class="mono">ca-central-1a</td>
+          <td class="num">2.25</td>
+          <td class="num">1.24</td>
+          <td class="num">1.5</td>
+          <td class="num">193</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Laravel-GTM-Production</td>
+          <td class="mono small">vpc-075213ad088d2c450</td>
+          <td class="mono small">nat-02534a9a1ca3dbce1</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">2.24</td>
+          <td class="num">0.90</td>
+          <td class="num">0.4</td>
+          <td class="num">95</td>
+          <td class="num small">18</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">vpc-009f37b106cf0b399</td>
+          <td class="mono small">nat-048a3043d2890ee23</td>
+          <td class="mono">eu-central-1c</td>
+          <td class="num">2.21</td>
+          <td class="num">0.07</td>
+          <td class="num">5.4</td>
+          <td class="num">109</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Ireland-Bayut-Production</td>
+          <td class="mono small">vpc-02034d9982b35078f</td>
+          <td class="mono small">nat-08f0ce92ad3e5a6ef</td>
+          <td class="mono">eu-west-1c</td>
+          <td class="num">2.13</td>
+          <td class="num">1.18</td>
+          <td class="num">1.7</td>
+          <td class="num">105</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-Membirds-Production</td>
+          <td class="mono small">vpc-0a5f503dc8377f7d9</td>
+          <td class="mono small">nat-08e6327ec4e712f56</td>
+          <td class="mono">eu-central-1b</td>
+          <td class="num">2.13</td>
+          <td class="num">0.30</td>
+          <td class="num">0.3</td>
+          <td class="num">104</td>
+          <td class="num small">9</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">vpc-0cc2b61b5e6027d6f</td>
+          <td class="mono small">nat-0de1d5b43b0467bd5</td>
+          <td class="mono">eu-west-2c</td>
+          <td class="num">2.10</td>
+          <td class="num">0.00</td>
+          <td class="num">0.4</td>
+          <td class="num">110</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">vpc-009f37b106cf0b399</td>
+          <td class="mono small">nat-034171e3921fdc6fc</td>
+          <td class="mono">eu-central-1a</td>
+          <td class="num">2.07</td>
+          <td class="num">0.12</td>
+          <td class="num">5.8</td>
+          <td class="num">149</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">vpc-0aadc56da7d674c30</td>
+          <td class="mono small">nat-00f4e8984b7fc8fc3</td>
+          <td class="mono">eu-central-1c</td>
+          <td class="num">2.06</td>
+          <td class="num">2.06</td>
+          <td class="num">14.0</td>
+          <td class="num">116</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Virginia-General</td>
+          <td class="mono small">vpc-0750ef78168ab30d7</td>
+          <td class="mono small">nat-047c2b2c076ac00e8</td>
+          <td class="mono">us-east-1c</td>
+          <td class="num">2.05</td>
+          <td class="num">0.95</td>
+          <td class="num">17.1</td>
+          <td class="num">131</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">vpc-0aadc56da7d674c30</td>
+          <td class="mono small">nat-03906c8c999540700</td>
+          <td class="mono">eu-central-1a</td>
+          <td class="num">2.00</td>
+          <td class="num">0.20</td>
+          <td class="num">5.9</td>
+          <td class="num">93</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestDev</td>
+          <td class="mono small">vpc-0016e762d0c5ec7ea</td>
+          <td class="mono small">nat-0cfb93dbc2b2d1d1f</td>
+          <td class="mono">eu-west-1c</td>
+          <td class="num">1.98</td>
+          <td class="num">0.39</td>
+          <td class="num">0.2</td>
+          <td class="num">81</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-CA-Central-General</td>
+          <td class="mono small">vpc-0dbafa620a250c237</td>
+          <td class="mono small">nat-0b5047d02d72eb386</td>
+          <td class="mono">ca-central-1b</td>
+          <td class="num">1.97</td>
+          <td class="num">0.49</td>
+          <td class="num">2.7</td>
+          <td class="num">167</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">vpc-0a97c73c5156003dc</td>
+          <td class="mono small">nat-0328f885a3fa17b87</td>
+          <td class="mono">eu-west-2b</td>
+          <td class="num">1.96</td>
+          <td class="num">0.12</td>
+          <td class="num">2.0</td>
+          <td class="num">110</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-CA-Central-General</td>
+          <td class="mono small">vpc-0dbafa620a250c237</td>
+          <td class="mono small">nat-0c2211d2870758d6f</td>
+          <td class="mono">ca-central-1a</td>
+          <td class="num">1.95</td>
+          <td class="num">0.46</td>
+          <td class="num">2.0</td>
+          <td class="num">93</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">vpc-0a57c9b56037fa30c</td>
+          <td class="mono small">nat-05137abbeb8027616</td>
+          <td class="mono">ap-southeast-1b</td>
+          <td class="num">1.95</td>
+          <td class="num">0.23</td>
+          <td class="num">1.7</td>
+          <td class="num">151</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-General</td>
+          <td class="mono small">vpc-0aadc56da7d674c30</td>
+          <td class="mono small">nat-09ae1a12422cfc1d6</td>
+          <td class="mono">eu-central-1b</td>
+          <td class="num">1.95</td>
+          <td class="num">1.60</td>
+          <td class="num">3.9</td>
+          <td class="num">117</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">vpc-0a97c73c5156003dc</td>
+          <td class="mono small">nat-0340aaa79150d2ec0</td>
+          <td class="mono">eu-west-2c</td>
+          <td class="num">1.92</td>
+          <td class="num">0.16</td>
+          <td class="num">3.0</td>
+          <td class="num">152</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Laravel-GTM-Production</td>
+          <td class="mono small">vpc-075213ad088d2c450</td>
+          <td class="mono small">nat-0bb3e9927f067973b</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">1.83</td>
+          <td class="num">0.55</td>
+          <td class="num">0.5</td>
+          <td class="num">85</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Laravel-GTM-Production</td>
+          <td class="mono small">vpc-075213ad088d2c450</td>
+          <td class="mono small">nat-06d8a7774c4b7d485</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">1.82</td>
+          <td class="num">0.35</td>
+          <td class="num">0.2</td>
+          <td class="num">86</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Sydney-ENT-Swyftx</td>
+          <td class="mono small">vpc-0f7ac5d9546094f47</td>
+          <td class="mono small">nat-009f9470c82e672ce</td>
+          <td class="mono">ap-southeast-2b</td>
+          <td class="num">1.78</td>
+          <td class="num">0.83</td>
+          <td class="num">0.7</td>
+          <td class="num">56</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Sydney-ENT-Swyftx</td>
+          <td class="mono small">vpc-0f7ac5d9546094f47</td>
+          <td class="mono small">nat-00830a50cb61ecdb3</td>
+          <td class="mono">ap-southeast-2c</td>
+          <td class="num">1.74</td>
+          <td class="num">0.99</td>
+          <td class="num">0.6</td>
+          <td class="num">68</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Ireland-Bayut-Production</td>
+          <td class="mono small">vpc-02034d9982b35078f</td>
+          <td class="mono small">nat-00e86d69012d06a66</td>
+          <td class="mono">eu-west-1b</td>
+          <td class="num">1.73</td>
+          <td class="num">0.91</td>
+          <td class="num">0.9</td>
+          <td class="num">96</td>
+          <td class="num small">4</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-US-Ohio-General</td>
+          <td class="mono small">vpc-003b04e78ebc87a67</td>
+          <td class="mono small">nat-021177f56899ef08a</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">1.61</td>
+          <td class="num">0.09</td>
+          <td class="num">5.9</td>
+          <td class="num">122</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Sydney-General</td>
+          <td class="mono small">vpc-0c14a11113328de54</td>
+          <td class="mono small">nat-0bfb0ef47499214aa</td>
+          <td class="mono">ap-southeast-2b</td>
+          <td class="num">1.55</td>
+          <td class="num">0.37</td>
+          <td class="num">26.1</td>
+          <td class="num">105</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-ENT-Gameboost</td>
+          <td class="mono small">vpc-0f04a5dc8f97b3c4f</td>
+          <td class="mono small">nat-0bd97ec5c600c8a99</td>
+          <td class="mono">eu-west-2c</td>
+          <td class="num">1.46</td>
+          <td class="num">1.46</td>
+          <td class="num">12.1</td>
+          <td class="num">72</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-CA-Central-General</td>
+          <td class="mono small">vpc-0235b8b3cdf4659e3</td>
+          <td class="mono small">nat-01174b797ba474fb4</td>
+          <td class="mono">ca-central-1b</td>
+          <td class="num">1.45</td>
+          <td class="num">1.45</td>
+          <td class="num">1.4</td>
+          <td class="num">106</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-London-Superscript-Production</td>
+          <td class="mono small">vpc-0aff3086aedd59473</td>
+          <td class="mono small">nat-0de967581706bbcfa</td>
+          <td class="mono">eu-west-2a</td>
+          <td class="num">1.45</td>
+          <td class="num">1.45</td>
+          <td class="num">0.8</td>
+          <td class="num">55</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Edverum-Production</td>
+          <td class="mono small">vpc-0b41f4fbe61e99e39</td>
+          <td class="mono small">nat-0af8bbd3125c01f5e</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">1.44</td>
+          <td class="num">1.44</td>
+          <td class="num">0.2</td>
+          <td class="num">44</td>
+          <td class="num small">12</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-GAEM-Production</td>
+          <td class="mono small">vpc-09a2ff4417fd4841b</td>
+          <td class="mono small">nat-09897ca6793dc626f</td>
+          <td class="mono">eu-central-1a</td>
+          <td class="num">1.43</td>
+          <td class="num">1.43</td>
+          <td class="num">1.2</td>
+          <td class="num">59</td>
+          <td class="num small">9</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Diagonal-Production</td>
+          <td class="mono small">vpc-04cc3fec59ef2a96a</td>
+          <td class="mono small">nat-09af452d312233e67</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">1.39</td>
+          <td class="num">0.36</td>
+          <td class="num">0.9</td>
+          <td class="num">52</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Sydney-General</td>
+          <td class="mono small">vpc-01ab840d8622fa196</td>
+          <td class="mono small">nat-01ad989f614c54b4f</td>
+          <td class="mono">ap-southeast-2a</td>
+          <td class="num">1.37</td>
+          <td class="num">1.37</td>
+          <td class="num">4.9</td>
+          <td class="num">112</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Sydney-General</td>
+          <td class="mono small">vpc-01ab840d8622fa196</td>
+          <td class="mono small">nat-0b0a5ce9bed8c988e</td>
+          <td class="mono">ap-southeast-2c</td>
+          <td class="num">1.34</td>
+          <td class="num">1.30</td>
+          <td class="num">2.8</td>
+          <td class="num">113</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-General</td>
+          <td class="mono small">vpc-0a97c73c5156003dc</td>
+          <td class="mono small">nat-048a681741c6f432d</td>
+          <td class="mono">eu-west-2a</td>
+          <td class="num">1.33</td>
+          <td class="num">0.33</td>
+          <td class="num">3.1</td>
+          <td class="num">115</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Sydney-General</td>
+          <td class="mono small">vpc-01ab840d8622fa196</td>
+          <td class="mono small">nat-07b1928b0ece2efc6</td>
+          <td class="mono">ap-southeast-2b</td>
+          <td class="num">1.31</td>
+          <td class="num">1.30</td>
+          <td class="num">4.1</td>
+          <td class="num">112</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-General</td>
+          <td class="mono small">vpc-040cc62ec6ee9cb61</td>
+          <td class="mono small">nat-034594f5f1107f168</td>
+          <td class="mono">eu-west-1a</td>
+          <td class="num">1.29</td>
+          <td class="num">1.29</td>
+          <td class="num">2.6</td>
+          <td class="num">109</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Sydney-ENT-Swyftx</td>
+          <td class="mono small">vpc-0f7ac5d9546094f47</td>
+          <td class="mono small">nat-03e3b03bbb5c67542</td>
+          <td class="mono">ap-southeast-2a</td>
+          <td class="num">1.26</td>
+          <td class="num">0.54</td>
+          <td class="num">0.6</td>
+          <td class="num">55</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-ENT-Gameboost</td>
+          <td class="mono small">vpc-0f04a5dc8f97b3c4f</td>
+          <td class="mono small">nat-00d1018a2815a20f7</td>
+          <td class="mono">eu-west-2a</td>
+          <td class="num">1.24</td>
+          <td class="num">1.05</td>
+          <td class="num">7.5</td>
+          <td class="num">90</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-CA-Central-General</td>
+          <td class="mono small">vpc-0235b8b3cdf4659e3</td>
+          <td class="mono small">nat-0eb3aa5d500f4d029</td>
+          <td class="mono">ca-central-1d</td>
+          <td class="num">1.24</td>
+          <td class="num">0.95</td>
+          <td class="num">1.7</td>
+          <td class="num">100</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-General</td>
+          <td class="mono small">vpc-040cc62ec6ee9cb61</td>
+          <td class="mono small">nat-0f3c40a5322de240a</td>
+          <td class="mono">eu-west-1c</td>
+          <td class="num">1.22</td>
+          <td class="num">0.82</td>
+          <td class="num">1.0</td>
+          <td class="num">102</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">vpc-010479db7b19c484c</td>
+          <td class="mono small">nat-05aa7520f57a6a986</td>
+          <td class="mono">ap-southeast-1c</td>
+          <td class="num">1.20</td>
+          <td class="num">0.02</td>
+          <td class="num">2.5</td>
+          <td class="num">89</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">vpc-010479db7b19c484c</td>
+          <td class="mono small">nat-02f3179944f3c997f</td>
+          <td class="mono">ap-southeast-1a</td>
+          <td class="num">1.20</td>
+          <td class="num">0.10</td>
+          <td class="num">2.9</td>
+          <td class="num">103</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-LapSafe-Production</td>
+          <td class="mono small">vpc-01be90104727f4c56</td>
+          <td class="mono small">nat-092b95dbe176b59de</td>
+          <td class="mono">eu-central-1c</td>
+          <td class="num">1.18</td>
+          <td class="num">0.65</td>
+          <td class="num">0.1</td>
+          <td class="num">46</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-General</td>
+          <td class="mono small">vpc-040cc62ec6ee9cb61</td>
+          <td class="mono small">nat-006cdf77aec5704ee</td>
+          <td class="mono">eu-west-1b</td>
+          <td class="num">1.18</td>
+          <td class="num">1.18</td>
+          <td class="num">1.8</td>
+          <td class="num">98</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Bo-Battle-Arena-Production</td>
+          <td class="mono small">vpc-0d9b9b031fdadcb2d</td>
+          <td class="mono small">nat-0da9f18dbb7e2c755</td>
+          <td class="mono">us-east-1c</td>
+          <td class="num">1.16</td>
+          <td class="num">0.35</td>
+          <td class="num">0.1</td>
+          <td class="num">53</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-London-ENT-Gameboost</td>
+          <td class="mono small">vpc-0f04a5dc8f97b3c4f</td>
+          <td class="mono small">nat-0643efd75e3d00afe</td>
+          <td class="mono">eu-west-2b</td>
+          <td class="num">1.11</td>
+          <td class="num">1.11</td>
+          <td class="num">8.6</td>
+          <td class="num">82</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-ENT-Lumos</td>
+          <td class="mono small">vpc-0b0b643f7c2d5dbb4</td>
+          <td class="mono small">nat-0abdc245af9ccd0c6</td>
+          <td class="mono">eu-central-1b</td>
+          <td class="num">1.10</td>
+          <td class="num">1.10</td>
+          <td class="num">2.7</td>
+          <td class="num">54</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Ireland-Trybe-Production</td>
+          <td class="mono small">vpc-0e0261caeeae6798d</td>
+          <td class="mono small">nat-08545015409cf6137</td>
+          <td class="mono">eu-west-1b</td>
+          <td class="num">1.08</td>
+          <td class="num">0.83</td>
+          <td class="num">0.5</td>
+          <td class="num">58</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-AP-Singapore-General</td>
+          <td class="mono small">vpc-010479db7b19c484c</td>
+          <td class="mono small">nat-04e918e942727769a</td>
+          <td class="mono">ap-southeast-1b</td>
+          <td class="num">1.08</td>
+          <td class="num">0.02</td>
+          <td class="num">2.5</td>
+          <td class="num">89</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Foundry-Production</td>
+          <td class="mono small">vpc-0bf3a5a7b04ca26ba</td>
+          <td class="mono small">nat-0aebbaf0977c88b4a</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">1.06</td>
+          <td class="num">0.47</td>
+          <td class="num">0.3</td>
+          <td class="num">48</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Ireland-Trybe-Production</td>
+          <td class="mono small">vpc-0e0261caeeae6798d</td>
+          <td class="mono small">nat-0e4886c4830d153c4</td>
+          <td class="mono">eu-west-1a</td>
+          <td class="num">1.05</td>
+          <td class="num">1.05</td>
+          <td class="num">1.3</td>
+          <td class="num">55</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-London-Kin-Production</td>
+          <td class="mono small">vpc-0742e38524e41e088</td>
+          <td class="mono small">nat-06ce15a88eef76717</td>
+          <td class="mono">eu-west-2b</td>
+          <td class="num">1.02</td>
+          <td class="num">1.02</td>
+          <td class="num">0.4</td>
+          <td class="num">55</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Ireland-Trybe-Production</td>
+          <td class="mono small">vpc-0e0261caeeae6798d</td>
+          <td class="mono small">nat-0f5a055f870b4abe5</td>
+          <td class="mono">eu-west-1c</td>
+          <td class="num">0.95</td>
+          <td class="num">0.62</td>
+          <td class="num">0.6</td>
+          <td class="num">42</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Publica-Ia-Production</td>
+          <td class="mono small">vpc-0fa4a52fbbe0b3bba</td>
+          <td class="mono small">nat-0e0cfa649f76e0b31</td>
+          <td class="mono">us-east-1b</td>
+          <td class="num">0.94</td>
+          <td class="num">0.36</td>
+          <td class="num">0.4</td>
+          <td class="num">51</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Edverum-Production</td>
+          <td class="mono small">vpc-0b41f4fbe61e99e39</td>
+          <td class="mono small">nat-0a256e66e534f2a39</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">0.86</td>
+          <td class="num">0.86</td>
+          <td class="num">0.2</td>
+          <td class="num">58</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Diagonal-Production</td>
+          <td class="mono small">vpc-04cc3fec59ef2a96a</td>
+          <td class="mono small">nat-026ab629cde08b346</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">0.85</td>
+          <td class="num">0.84</td>
+          <td class="num">0.5</td>
+          <td class="num">32</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-GovAI-Production</td>
+          <td class="mono small">vpc-0d72b9d92e263157d</td>
+          <td class="mono small">nat-0db52b40801b22134</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">0.82</td>
+          <td class="num">0.74</td>
+          <td class="num">0.5</td>
+          <td class="num">33</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-GovAI-Production</td>
+          <td class="mono small">vpc-0d72b9d92e263157d</td>
+          <td class="mono small">nat-003438a07e4704fc8</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">0.74</td>
+          <td class="num">0.53</td>
+          <td class="num">0.4</td>
+          <td class="num">31</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Foundry-Production</td>
+          <td class="mono small">vpc-0bf3a5a7b04ca26ba</td>
+          <td class="mono small">nat-0b763faca511487d1</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">0.73</td>
+          <td class="num">0.45</td>
+          <td class="num">0.3</td>
+          <td class="num">27</td>
+          <td class="num small">15</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-ENT-Lumos</td>
+          <td class="mono small">vpc-0b0b643f7c2d5dbb4</td>
+          <td class="mono small">nat-0d24b0a3634225115</td>
+          <td class="mono">eu-central-1c</td>
+          <td class="num">0.68</td>
+          <td class="num">0.43</td>
+          <td class="num">3.8</td>
+          <td class="num">44</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-KaTom-Restaur...-Production</td>
+          <td class="mono small">vpc-0f97a8a77d7f0ce69</td>
+          <td class="mono small">nat-044c786496a114d8c</td>
+          <td class="mono">us-east-1b</td>
+          <td class="num">0.66</td>
+          <td class="num">0.66</td>
+          <td class="num">2.3</td>
+          <td class="num">42</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestDev</td>
+          <td class="mono small">vpc-0016e762d0c5ec7ea</td>
+          <td class="mono small">nat-0e5365ce70f2ed9d1</td>
+          <td class="mono">eu-west-1b</td>
+          <td class="num">0.64</td>
+          <td class="num">0.64</td>
+          <td class="num">0.1</td>
+          <td class="num">26</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-London-Kin-Production</td>
+          <td class="mono small">vpc-0742e38524e41e088</td>
+          <td class="mono small">nat-056dbdd7b25ff4f36</td>
+          <td class="mono">eu-west-2c</td>
+          <td class="num">0.62</td>
+          <td class="num">0.62</td>
+          <td class="num">0.1</td>
+          <td class="num">28</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestProd</td>
+          <td class="mono small">vpc-040a9666283f2adc2</td>
+          <td class="mono small">nat-00a8f2233727b3aa7</td>
+          <td class="mono">eu-west-1c</td>
+          <td class="num">0.57</td>
+          <td class="num">0.57</td>
+          <td class="num">0.3</td>
+          <td class="num">22</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-CA-Central-GovAI-Production</td>
+          <td class="mono small">vpc-0024710aad56d84b6</td>
+          <td class="mono small">nat-06298684158e79c5e</td>
+          <td class="mono">ca-central-1d</td>
+          <td class="num">0.57</td>
+          <td class="num">0.57</td>
+          <td class="num">0.5</td>
+          <td class="num">35</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-CA-Central-GovAI-Production</td>
+          <td class="mono small">vpc-0024710aad56d84b6</td>
+          <td class="mono small">nat-0bfa686186b6ce6d9</td>
+          <td class="mono">ca-central-1b</td>
+          <td class="num">0.55</td>
+          <td class="num">0.55</td>
+          <td class="num">0.2</td>
+          <td class="num">40</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-LapSafe-Production</td>
+          <td class="mono small">vpc-01be90104727f4c56</td>
+          <td class="mono small">nat-0bce321addc4ed846</td>
+          <td class="mono">eu-central-1b</td>
+          <td class="num">0.55</td>
+          <td class="num">0.10</td>
+          <td class="num">0.1</td>
+          <td class="num">18</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-LapSafe-Production</td>
+          <td class="mono small">vpc-01be90104727f4c56</td>
+          <td class="mono small">nat-0d5eac1eda78eb0c6</td>
+          <td class="mono">eu-central-1a</td>
+          <td class="num">0.54</td>
+          <td class="num">0.34</td>
+          <td class="num">0.1</td>
+          <td class="num">25</td>
+          <td class="num small">34</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-GAEM-Production</td>
+          <td class="mono small">vpc-09a2ff4417fd4841b</td>
+          <td class="mono small">nat-01bb659ceb7b379c3</td>
+          <td class="mono">eu-central-1b</td>
+          <td class="num">0.54</td>
+          <td class="num">0.54</td>
+          <td class="num">2.6</td>
+          <td class="num">29</td>
+          <td class="num small">10</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-Calibur-Production</td>
+          <td class="mono small">vpc-09b4b7174a9f2015a</td>
+          <td class="mono small">nat-0f98ccd45e5360531</td>
+          <td class="mono">eu-central-1c</td>
+          <td class="num">0.51</td>
+          <td class="num">0.51</td>
+          <td class="num">0.1</td>
+          <td class="num">15</td>
+          <td class="num small">6</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-GAEM-Production</td>
+          <td class="mono small">vpc-09a2ff4417fd4841b</td>
+          <td class="mono small">nat-0a26cefc303225ab5</td>
+          <td class="mono">eu-central-1c</td>
+          <td class="num">0.50</td>
+          <td class="num">0.50</td>
+          <td class="num">1.2</td>
+          <td class="num">27</td>
+          <td class="num small">1</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-CA-Central-GovAI-Production</td>
+          <td class="mono small">vpc-0024710aad56d84b6</td>
+          <td class="mono small">nat-05872141af8c7a810</td>
+          <td class="mono">ca-central-1a</td>
+          <td class="num">0.50</td>
+          <td class="num">0.50</td>
+          <td class="num">0.3</td>
+          <td class="num">35</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-GovAI-Production</td>
+          <td class="mono small">vpc-0d72b9d92e263157d</td>
+          <td class="mono small">nat-041e952ba10a2c24b</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">0.49</td>
+          <td class="num">0.49</td>
+          <td class="num">0.2</td>
+          <td class="num">26</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Publica-Ia-Production</td>
+          <td class="mono small">vpc-0fa4a52fbbe0b3bba</td>
+          <td class="mono small">nat-0fecba52ac63bb38d</td>
+          <td class="mono">us-east-1a</td>
+          <td class="num">0.46</td>
+          <td class="num">0.40</td>
+          <td class="num">0.3</td>
+          <td class="num">29</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Bo-Battle-Arena-Production</td>
+          <td class="mono small">vpc-0d9b9b031fdadcb2d</td>
+          <td class="mono small">nat-048b1bf245a052fb0</td>
+          <td class="mono">us-east-1a</td>
+          <td class="num">0.43</td>
+          <td class="num">0.43</td>
+          <td class="num">0.1</td>
+          <td class="num">21</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Publica-Ia-Production</td>
+          <td class="mono small">vpc-0fa4a52fbbe0b3bba</td>
+          <td class="mono small">nat-02be2cd634ddcfe2d</td>
+          <td class="mono">us-east-1c</td>
+          <td class="num">0.43</td>
+          <td class="num">0.43</td>
+          <td class="num">0.6</td>
+          <td class="num">25</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Frankfurt-ENT-Lumos</td>
+          <td class="mono small">vpc-0b0b643f7c2d5dbb4</td>
+          <td class="mono small">nat-0b61b7d6047a0b4d3</td>
+          <td class="mono">eu-central-1a</td>
+          <td class="num">0.42</td>
+          <td class="num">0.42</td>
+          <td class="num">1.5</td>
+          <td class="num">24</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-KaTom-Restaur...-Production</td>
+          <td class="mono small">vpc-0f97a8a77d7f0ce69</td>
+          <td class="mono small">nat-007c2ca6df2386de3</td>
+          <td class="mono">us-east-1c</td>
+          <td class="num">0.42</td>
+          <td class="num">0.35</td>
+          <td class="num">1.5</td>
+          <td class="num">27</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Foundry-Production</td>
+          <td class="mono small">vpc-0bf3a5a7b04ca26ba</td>
+          <td class="mono small">nat-0ede05d8577cd0a40</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">0.42</td>
+          <td class="num">0.42</td>
+          <td class="num">0.1</td>
+          <td class="num">20</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Shuttleapp-Production</td>
+          <td class="mono small">vpc-02a24679f1f57f4ec</td>
+          <td class="mono small">nat-047f06faac11459a9</td>
+          <td class="mono">us-east-1c</td>
+          <td class="num">0.42</td>
+          <td class="num">0.34</td>
+          <td class="num">0.3</td>
+          <td class="num">26</td>
+          <td class="num small">81</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestProd</td>
+          <td class="mono small">vpc-040a9666283f2adc2</td>
+          <td class="mono small">nat-0fb87030336a64841</td>
+          <td class="mono">eu-west-1b</td>
+          <td class="num">0.41</td>
+          <td class="num">0.11</td>
+          <td class="num">0.1</td>
+          <td class="num">27</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-Calibur-Production</td>
+          <td class="mono small">vpc-09b4b7174a9f2015a</td>
+          <td class="mono small">nat-0a87743ff2f2672bd</td>
+          <td class="mono">eu-central-1a</td>
+          <td class="num">0.40</td>
+          <td class="num">0.13</td>
+          <td class="num">0.3</td>
+          <td class="num">12</td>
+          <td class="num small">26</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Diagonal-Production</td>
+          <td class="mono small">vpc-04cc3fec59ef2a96a</td>
+          <td class="mono small">nat-034061b6967ffe562</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">0.39</td>
+          <td class="num">0.38</td>
+          <td class="num">0.2</td>
+          <td class="num">25</td>
+          <td class="num small">103</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Bo-Battle-Arena-Production</td>
+          <td class="mono small">vpc-0d9b9b031fdadcb2d</td>
+          <td class="mono small">nat-0fbe7d3ea869b1d15</td>
+          <td class="mono">us-east-1b</td>
+          <td class="num">0.39</td>
+          <td class="num">0.39</td>
+          <td class="num">0.1</td>
+          <td class="num">28</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Davidson-Production</td>
+          <td class="mono small">vpc-08b83728c8ce7a57c</td>
+          <td class="mono small">nat-0a2c7717de1e61262</td>
+          <td class="mono">us-east-2c</td>
+          <td class="num">0.39</td>
+          <td class="num">0.39</td>
+          <td class="num">0.2</td>
+          <td class="num">13</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-KaTom-Restaur...-Production</td>
+          <td class="mono small">vpc-0f97a8a77d7f0ce69</td>
+          <td class="mono small">nat-0e984bda121c0e2b6</td>
+          <td class="mono">us-east-1a</td>
+          <td class="num">0.38</td>
+          <td class="num">0.10</td>
+          <td class="num">0.8</td>
+          <td class="num">29</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-Membirds-Production</td>
+          <td class="mono small">vpc-0a5f503dc8377f7d9</td>
+          <td class="mono small">nat-0e078f206b6b538f4</td>
+          <td class="mono">eu-central-1c</td>
+          <td class="num">0.38</td>
+          <td class="num">0.24</td>
+          <td class="num">0.1</td>
+          <td class="num">24</td>
+          <td class="num small">3</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-Membirds-Production</td>
+          <td class="mono small">vpc-0a5f503dc8377f7d9</td>
+          <td class="mono small">nat-063bbc53bf67ba25c</td>
+          <td class="mono">eu-central-1a</td>
+          <td class="num">0.37</td>
+          <td class="num">0.37</td>
+          <td class="num">0.3</td>
+          <td class="num">15</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-AP-Singapore-AIO-Wireless-Production</td>
+          <td class="mono small">vpc-0f73b7ee008c96acf</td>
+          <td class="mono small">nat-0d7717461f6d58e60</td>
+          <td class="mono">ap-southeast-1a</td>
+          <td class="num">0.37</td>
+          <td class="num">0.37</td>
+          <td class="num">0.5</td>
+          <td class="num">22</td>
+          <td class="num small">24</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-London-Kin-Production</td>
+          <td class="mono small">vpc-0742e38524e41e088</td>
+          <td class="mono small">nat-04def22cf7bf422b0</td>
+          <td class="mono">eu-west-2a</td>
+          <td class="num">0.37</td>
+          <td class="num">0.14</td>
+          <td class="num">0.2</td>
+          <td class="num">20</td>
+          <td class="num small">1</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-AP-Northeast-1-General</td>
+          <td class="mono small">vpc-0f26238b7734ab510</td>
+          <td class="mono small">nat-0b3f73d9e1c9f6f78</td>
+          <td class="mono">ap-northeast-1c</td>
+          <td class="num">0.36</td>
+          <td class="num">0.08</td>
+          <td class="num">0.0</td>
+          <td class="num">21</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-AP-Northeast-1-General</td>
+          <td class="mono small">vpc-0697f2ad8e021171a</td>
+          <td class="mono small">nat-07747cd8673fb8b73</td>
+          <td class="mono">ap-northeast-1d</td>
+          <td class="num">0.35</td>
+          <td class="num">0.22</td>
+          <td class="num">0.2</td>
+          <td class="num">14</td>
+          <td class="num small">2</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-AP-Northeast-1-General</td>
+          <td class="mono small">vpc-0697f2ad8e021171a</td>
+          <td class="mono small">nat-0ca7407e4fce585e0</td>
+          <td class="mono">ap-northeast-1c</td>
+          <td class="num">0.34</td>
+          <td class="num">0.12</td>
+          <td class="num">0.2</td>
+          <td class="num">20</td>
+          <td class="num small">4</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-AP-Northeast-1-General</td>
+          <td class="mono small">vpc-0f26238b7734ab510</td>
+          <td class="mono small">nat-01df05fdeffd550c1</td>
+          <td class="mono">ap-northeast-1d</td>
+          <td class="num">0.33</td>
+          <td class="num">0.33</td>
+          <td class="num">0.1</td>
+          <td class="num">23</td>
+          <td class="num small">26</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Rimsys-Production</td>
+          <td class="mono small">vpc-0786f10986ff4bcfb</td>
+          <td class="mono small">nat-0ffa75dea6a0a9445</td>
+          <td class="mono">us-east-1c</td>
+          <td class="num">0.32</td>
+          <td class="num">0.28</td>
+          <td class="num">0.1</td>
+          <td class="num">24</td>
+          <td class="num small">12</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Shuttleapp-Production</td>
+          <td class="mono small">vpc-02a24679f1f57f4ec</td>
+          <td class="mono small">nat-0755fd2aa5f0ddedd</td>
+          <td class="mono">us-east-1b</td>
+          <td class="num">0.31</td>
+          <td class="num">0.11</td>
+          <td class="num">0.2</td>
+          <td class="num">13</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-AP-Singapore-AIO-Wireless-Production</td>
+          <td class="mono small">vpc-0f73b7ee008c96acf</td>
+          <td class="mono small">nat-08d5972f41b9f4891</td>
+          <td class="mono">ap-southeast-1b</td>
+          <td class="num">0.31</td>
+          <td class="num">0.27</td>
+          <td class="num">0.7</td>
+          <td class="num">19</td>
+          <td class="num small">4</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-AP-Singapore-AIO-Wireless-Production</td>
+          <td class="mono small">vpc-0f73b7ee008c96acf</td>
+          <td class="mono small">nat-010d552b2883ade32</td>
+          <td class="mono">ap-southeast-1c</td>
+          <td class="num">0.30</td>
+          <td class="num">0.07</td>
+          <td class="num">0.1</td>
+          <td class="num">9</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Rimsys-Production</td>
+          <td class="mono small">vpc-0786f10986ff4bcfb</td>
+          <td class="mono small">nat-079957dd0e3a1913a</td>
+          <td class="mono">us-east-1b</td>
+          <td class="num">0.29</td>
+          <td class="num">0.24</td>
+          <td class="num">0.1</td>
+          <td class="num">21</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-AP-Northeast-1-General</td>
+          <td class="mono small">vpc-0f26238b7734ab510</td>
+          <td class="mono small">nat-04d18b31cce5730b1</td>
+          <td class="mono">ap-northeast-1a</td>
+          <td class="num">0.28</td>
+          <td class="num">0.15</td>
+          <td class="num">0.2</td>
+          <td class="num">11</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Davidson-Production</td>
+          <td class="mono small">vpc-08b83728c8ce7a57c</td>
+          <td class="mono small">nat-028096540175561f7</td>
+          <td class="mono">us-east-2a</td>
+          <td class="num">0.22</td>
+          <td class="num">0.22</td>
+          <td class="num">0.3</td>
+          <td class="num">13</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Davidson-Production</td>
+          <td class="mono small">vpc-08b83728c8ce7a57c</td>
+          <td class="mono small">nat-05667b501241e5ae0</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">0.21</td>
+          <td class="num">0.12</td>
+          <td class="num">0.1</td>
+          <td class="num">10</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Shuttleapp-Production</td>
+          <td class="mono small">vpc-02a24679f1f57f4ec</td>
+          <td class="mono small">nat-0114dee154e629308</td>
+          <td class="mono">us-east-1a</td>
+          <td class="num">0.20</td>
+          <td class="num">0.16</td>
+          <td class="num">0.2</td>
+          <td class="num">13</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-EU-Frankfurt-Calibur-Production</td>
+          <td class="mono small">vpc-09b4b7174a9f2015a</td>
+          <td class="mono small">nat-0ea88505f9ea586d2</td>
+          <td class="mono">eu-central-1b</td>
+          <td class="num">0.18</td>
+          <td class="num">0.12</td>
+          <td class="num">0.3</td>
+          <td class="num">10</td>
+          <td class="num small">6</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Virginia-Rimsys-Production</td>
+          <td class="mono small">vpc-0786f10986ff4bcfb</td>
+          <td class="mono small">nat-0a34fdbdb261d187b</td>
+          <td class="mono">us-east-1a</td>
+          <td class="num">0.14</td>
+          <td class="num">0.09</td>
+          <td class="num">0.1</td>
+          <td class="num">7</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-AP-Northeast-1-General</td>
+          <td class="mono small">vpc-0697f2ad8e021171a</td>
+          <td class="mono small">nat-00205919a95b7dc22</td>
+          <td class="mono">ap-northeast-1a</td>
+          <td class="num">0.12</td>
+          <td class="num">0.08</td>
+          <td class="num">0.2</td>
+          <td class="num">6</td>
+          <td class="num small">24</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestProd</td>
+          <td class="mono small">vpc-040a9666283f2adc2</td>
+          <td class="mono small">nat-00ebf6c95cb095f90</td>
+          <td class="mono">eu-west-1a</td>
+          <td class="num">0.11</td>
+          <td class="num">0.09</td>
+          <td class="num">0.2</td>
+          <td class="num">10</td>
+          <td class="num small">0</td>
+        </tr>
+
+        <tr>
+          <td class="mono small">Cloud-Prod-US-Ohio-Edverum-Production</td>
+          <td class="mono small">vpc-0b41f4fbe61e99e39</td>
+          <td class="mono small">nat-00357178a929839dd</td>
+          <td class="mono">us-east-2b</td>
+          <td class="num">0.09</td>
+          <td class="num">0.09</td>
+          <td class="num">0.0</td>
+          <td class="num">4</td>
+          <td class="num small">4</td>
+        </tr>
+        </tbody>
+      </table></div>
+    </details>
+  </section>
+
+  <section>
+    <h2>c8gn instance catalog <span class="sub">Graviton4 / Nitro v6 · current generation network-optimized</span></h2>
+    <div class="panel"><table>
+      <thead><tr><th>Instance</th><th>vCPU</th><th>Rated NIC Gbps</th><th>Effective NAT Gbps</th><th>BW mode</th></tr></thead>
+      <tbody>
+        
+        <tr><td class="mono">c8gn.medium</td><td class="num">1</td>
+        <td class="num">25</td><td class="num bold">5.00</td>
+        <td class="num small">burst</td></tr>
+
+        <tr><td class="mono">c8gn.large</td><td class="num">2</td>
+        <td class="num">30</td><td class="num bold">5.00</td>
+        <td class="num small">burst</td></tr>
+
+        <tr><td class="mono">c8gn.xlarge</td><td class="num">4</td>
+        <td class="num">40</td><td class="num bold">5.00</td>
+        <td class="num small">burst</td></tr>
+
+        <tr><td class="mono">c8gn.2xlarge</td><td class="num">8</td>
+        <td class="num">50</td><td class="num bold">5.00</td>
+        <td class="num small">burst</td></tr>
+
+        <tr><td class="mono">c8gn.4xlarge</td><td class="num">16</td>
+        <td class="num">50</td><td class="num bold">5.00</td>
+        <td class="num small">✓</td></tr>
+
+        <tr><td class="mono">c8gn.8xlarge</td><td class="num">32</td>
+        <td class="num">100</td><td class="num bold">50.00</td>
+        <td class="num small">✓</td></tr>
+
+        <tr><td class="mono">c8gn.12xlarge</td><td class="num">48</td>
+        <td class="num">150</td><td class="num bold">75.00</td>
+        <td class="num small">✓</td></tr>
+
+        <tr><td class="mono">c8gn.16xlarge</td><td class="num">64</td>
+        <td class="num">200</td><td class="num bold">100.00</td>
+        <td class="num small">✓</td></tr>
+
+        <tr><td class="mono">c8gn.24xlarge</td><td class="num">96</td>
+        <td class="num">300</td><td class="num bold">150.00</td>
+        <td class="num small">✓</td></tr>
+
+        <tr><td class="mono">c8gn.48xlarge</td><td class="num">192</td>
+        <td class="num">600</td><td class="num bold">300.00</td>
+        <td class="num small">✓</td></tr>
+      </tbody>
+    </table></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:10px">
+      Effective NAT = rated × 0.5 for ≥32 vCPU (multi-flow IGW 50% cap), 5 Gbps hard cap for &lt;32 vCPU.
+    </p>
+  </section>
+
+  <section>
+    <h2>Caveats</h2>
+    <div class="caveats">
+      <h3>Bandwidth & sizing</h3>
+      <ul>
+        <li><b>30-second peak resolution.</b> CloudWatch snaps period&lt;60s up to 60s for NAT GW, but NAT GW publishes every 30s — <code>Maximum</code> at period=60 exposes the 30s bucket. Sub-30s microbursts can exceed reported peaks but won't sustain.</li>
+        <li><b>Per-VPC sizing.</b> One c8gn size per VPC (homogenous across AZs) so EKS / workload rebalancing doesn't create asymmetric NAT instances. Cost = (hourly × 730) × AZs in that VPC.</li>
+        <li><b>"c8gn (cons)" vs "c8gn (recent)" columns.</b> Two recommendations from two different sizing inputs:
+          <ul>
+            <li><code>cons</code> — sized on the <b>conservative</b> input: <code>max(90-day peak, AZ-aligned 1-min peak)</code>. Covers the worst spike we've seen in 90 days. This is what the Action column and Savings column are based on.</li>
+            <li><code>recent</code> — sized on the <b>last-15-day peak only</b>. The "if current load is the new steady state, what's enough?" number.</li>
+          </ul>
+          For most VPCs these match (shown as <span class="same">(same)</span>). They diverge only on HISTORICAL-flagged VPCs. Use them as decision support, not as a recommendation pair — pick the column whose assumptions you believe.
+        </li>
+        <li><b>HISTORICAL flag.</b> When 90d peak / 15d peak ≥ 5×, the conservative sizing is anchored to an older event rather than current load. See the "What HISTORICAL means" note below.</li>
+        <li><b>Multi-flow IGW penalty.</b> All NAT traffic is multi-flow through an IGW. &lt;32 vCPU = hard 5 Gbps cap, ≥32 vCPU = ~50% of rated NIC. Reflected in the "Effective NAT Gbps" column.</li>
+        <li><b>PPS.</b> Soft check assumes ~3 Mpps per 16 vCPU on Graviton4/Nitro v6 (no official number). Highest observed: ~2 Mpps. Not the binding constraint here.</li>
+        <li><b>Deleted NATs invisible</b> (DescribeNatGateways state=available filter). me-central-1 region skipped (CloudWatch InternalFailure).</li>
+      </ul>
+      <h3 style="margin-top:14px">Cost</h3>
+      <ul>
+        <li><b>NAT cost</b> from AWS Cost Explorer last 30d (USAGE_TYPE_GROUP filter on Running Hours + Data Processed). Per-VPC attribution: hours proportional to NAT count, bytes proportional to <code>BytesInFromSource + BytesOutToSource</code> last-30d totals per VPC.</li>
+        <li><b>EC2 alt cost</b> = c8gn hourly (live AWS Pricing API) × 730h × AZs per VPC + 8 GB gp3 root volume per instance (baseline 3,000 IOPS / 125 MB/s included free). Two variants shown side-by-side:
+          <ul>
+            <li><b>OD</b> — on-demand list price.</li>
+            <li><b>SP</b> — 1-year Compute Savings Plan, <b>No Upfront</b>. Region-specific discounts pulled live from the savingsplans API: US regions ~28%, EU regions ~21-22%, Sydney ~27%, Tokyo ~17%. Note: Compute SP is the flexible plan (covers EC2/Fargate/Lambda); EC2-Instance SP would give deeper discounts (~40%) but locks to instance family/region — Laravel Cloud uses generic Compute SP today.</li>
+          </ul>
+        </li>
+        <li><b>Internet egress excluded</b> from both sides (unchanged $0.09/GB regardless of NAT path).</li>
+        <li><b>Still not modeled:</b> NLB if used for HA, EIP hourly charges, intra-AZ data transfer, operational labor of self-managed NAT (AMI updates, on-call, failover testing). The bottom REPLACE accounts (savings under ~$200/mo) probably aren't worth the operational overhead even after these.</li>
+        <li><b>Action threshold:</b> savings ≥ +$50/mo → REPLACE; ≤ −$50/mo → KEEP. Both OD and SP get their own Action verdict — SP can flip MARGINAL/KEEP cases to REPLACE since the EC2 cost drops ~20-28%.</li>
+      </ul>
+      <h3 style="margin-top:14px">What HISTORICAL means</h3>
+      <p style="margin:0 0 8px">
+        The HISTORICAL flag is purely a math observation:
+        the 90-day peak is at least <b>5×</b> the
+        last-15-day peak. Both numbers are accurate CloudWatch measurements —
+        the flag does <i>not</i> mean the data is wrong or out of date. It means
+        the conservative sizing recommendation is anchored to an event that
+        hasn't happened in the last 15 days.
+      </p>
+      <p style="margin:0 0 8px"><b>Three different operational stories produce the same flag:</b></p>
+      <ul>
+        <li><b>One-off event.</b> A migration, DR drill, customer onboarding bulk-load that's complete. Won't recur → safe to size for recent load.</li>
+        <li><b>Rare-but-recurring event.</b> Monthly backup, quarterly bulk export, scheduled customer ETL. Will recur → size for the historical peak or accept reduced capacity at the next event.</li>
+        <li><b>Trend change.</b> Traffic genuinely dropped (customer churned, workload migrated elsewhere). Won't return → size for recent load.</li>
+      </ul>
+      <p style="margin:8px 0 0">
+        CloudWatch metric data alone can't distinguish these — you need
+        product/operations context. The report shows both the conservative
+        recommendation and the "recent" recommendation side-by-side so you can
+        choose. The safe default is the conservative number, then re-evaluate
+        after 30-60 days of EC2 NAT operation and downsize if recent peaks stay
+        low.
+      </p>
+    </div>
+  </section>
+</main>
+
+<script>
+  new Chart(document.getElementById('savingsChart'), {
+    type: 'bar',
+    data: { labels: ["Laravel-Cloud-Prod-EU-Frankfurt-General \u00b7 76561b71", "Laravel-Cloud-Prod-US-Ohio-General \u00b7 845fbd5c", "Laravel-Cloud-Prod-AP-Sydney-General \u00b7 3328de54", "Laravel-Cloud-Prod-US-Ohio-General \u00b7 170a50f1", "Laravel-Cloud-Prod-EU-London-General \u00b7 4454661e", "Cloud-Prod-EU-London-Shoptimised-Production \u00b7 a5b5eaa4", "Laravel-Cloud-Prod-EU-London-ENT-Gameboost \u00b7 f97b3c4f", "Laravel-Cloud-Prod-AP-Sydney-General \u00b7 622fa196", "Laravel-Cloud-Prod-EU-Frankfurt-General \u00b7 7d674c30", "Cloud-Prod-US-Virginia-KaTom-Restaur...-Production \u00b7 d7f0ce69", "Laravel-Cloud-Prod-AP-Singapore-General \u00b7 b19c484c", "Laravel-Cloud-Prod-EU-Frankfurt-ENT-Lumos \u00b7 c2d5dbb4", "Cloud-Prod-AP-Singapore-AIO-Wireless-Production \u00b7 08c96acf", "Cloud-Prod-US-Virginia-Publica-Ia-Production \u00b7 be0b3bba", "Cloud-Prod-US-Ohio-GovAI-Production \u00b7 e263157d", "Laravel-Cloud-Prod-EU-London-General \u00b7 156003dc", "Cloud-Prod-CA-Central-GovAI-Production \u00b7 d56d84b6", "Cloud-Prod-US-Ohio-Davidson-Production \u00b7 8ce7a57c", "Cloud-Prod-US-Virginia-Shuttleapp-Production \u00b7 1f57f4ec", "Cloud-Prod-EU-Frankfurt-Calibur-Production \u00b7 a9f2015a", "Cloud-Prod-AP-Northeast-1-General \u00b7 e021171a", "Laravel-Cloud-Prod-EU-Ireland-General \u00b7 12f3224a", "Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestProd \u00b7 83f2adc2", "Cloud-Prod-AP-Northeast-1-General \u00b7 734ab510", "Cloud-Prod-US-Virginia-Rimsys-Production \u00b7 6ff4bcfb", "Laravel-Cloud-Prod-EU-Frankfurt-General \u00b7 6cf0b399", "Laravel-Cloud-Prod-EU-Ireland-General \u00b7 6ee9cb61", "Cloud-Prod-EU-Frankfurt-GAEM-Production \u00b7 7fd4841b", "Cloud-Prod-US-Ohio-Diagonal-Production \u00b7 9ef2a96a", "Cloud-Prod-EU-Ireland-Trybe-Production \u00b7 eae6798d", "Cloud-Prod-US-Ohio-Foundry-Production \u00b7 04ca26ba", "Laravel-Cloud-Prod-AP-Singapore-General \u00b7 037fa30c", "Cloud-Prod-US-Ohio-Edverum-Production \u00b7 61e99e39", "Laravel-Cloud-Prod-AP-Sydney-ENT-Swyftx \u00b7 46094f47", "Cloud-Prod-US-Virginia-Bo-Battle-Arena-Production \u00b7 fdadcb2d", "Cloud-Prod-EU-Frankfurt-LapSafe-Production \u00b7 727f4c56", "Cloud-Prod-EU-London-Kin-Production \u00b7 4e41e088", "Laravel-Cloud-Prod-CA-Central-General \u00b7 a250c237", "Laravel-Cloud-Prod-CA-Central-General \u00b7 df4659e3", "Cloud-Prod-EU-Ireland-Bayut-Production \u00b7 2b35078f", "Cloud-Prod-US-Ohio-Laravel-GTM-Production \u00b7 88d2c450", "Laravel-Cloud-Prod-EU-Ireland-ENT-PortwestDev \u00b7 0c5ec7ea", "Cloud-Prod-EU-Frankfurt-Membirds-Production \u00b7 8377f7d9", "Laravel-Cloud-Prod-AP-Singapore-General \u00b7 34fe64cf", "Laravel-Cloud-Prod-US-Virginia-General \u00b7 68ab30d7", "Laravel-Cloud-Prod-US-Virginia-General \u00b7 2cbd367c", "Laravel-Cloud-Prod-US-Ohio-General \u00b7 ebc87a67", "Laravel-Cloud-Prod-EU-London-General \u00b7 e6027d6f", "Cloud-Prod-US-Ohio-CMS-Max-Production \u00b7 55e0af95", "Cloud-Prod-EU-Frankfurt-Sportmonks-Production \u00b7 3c131dd6", "Cloud-Prod-EU-London-Superscript-Production \u00b7 edd59473"],
+             datasets: [{ label:'Savings $/mo', data: [14795.0, 12890.0, 6615.0, 3502.0, 2378.0, 1528.0, 824.0, 119.0, 103.0, 34.0, -24.0, -83.0, -92.0, -108.0, -117.0, -127.0, -131.0, -135.0, -137.0, -154.0, -159.0, -159.0, -163.0, -176.0, -177.0, -231.0, -232.0, -248.0, -359.0, -385.0, -393.0, -403.0, -427.0, -442.0, -461.0, -465.0, -477.0, -616.0, -811.0, -866.0, -895.0, -1029.0, -1039.0, -1097.0, -1183.0, -1338.0, -3275.0, -3321.0, -3793.0, -4350.0, -4683.0],
+                          backgroundColor: ["rgba(5,150,105,0.7)", "rgba(5,150,105,0.7)", "rgba(5,150,105,0.7)", "rgba(5,150,105,0.7)", "rgba(5,150,105,0.7)", "rgba(5,150,105,0.7)", "rgba(5,150,105,0.7)", "rgba(5,150,105,0.7)", "rgba(5,150,105,0.7)", "rgba(5,150,105,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)", "rgba(185,28,28,0.7)"], borderColor: ["rgba(5,150,105,1)", "rgba(5,150,105,1)", "rgba(5,150,105,1)", "rgba(5,150,105,1)", "rgba(5,150,105,1)", "rgba(5,150,105,1)", "rgba(5,150,105,1)", "rgba(5,150,105,1)", "rgba(5,150,105,1)", "rgba(5,150,105,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)", "rgba(185,28,28,1)"], borderWidth: 1 }] },
+    options: { indexAxis:'y', maintainAspectRatio:false,
+                scales: { x: { title: { display:true, text:'USD / month' }, ticks: { callback:v=>'$'+v.toLocaleString() } },
+                           y: { ticks: { font: { family:'SF Mono, ui-monospace, monospace', size:9 } } } },
+                plugins: { legend:{display:false},
+                            tooltip: { callbacks: { label: c => '$'+c.parsed.x.toLocaleString()+'/mo (~$'+(c.parsed.x*12).toLocaleString()+'/yr)' } } } }
+  });
+
+  new Chart(document.getElementById('bwChart'), {
+    type: 'bar',
+    data: { labels: ["Cloud-Prod-EU-London-Shoptimised-Pro \u00b7 a5b5eaa4", "Laravel-Cloud-Prod-US-Ohio-General \u00b7 845fbd5c", "Laravel-Cloud-Prod-US-Ohio-General \u00b7 170a50f1", "Cloud-Prod-EU-Frankfurt-Sportmonks-P \u00b7 3c131dd6", "Laravel-Cloud-Prod-EU-Frankfurt-Gene \u00b7 76561b71", "Laravel-Cloud-Prod-EU-London-General \u00b7 e6027d6f", "Laravel-Cloud-Prod-EU-London-General \u00b7 4454661e", "Laravel-Cloud-Prod-US-Virginia-Gener \u00b7 68ab30d7", "Laravel-Cloud-Prod-US-Virginia-Gener \u00b7 2cbd367c", "Cloud-Prod-US-Ohio-CMS-Max-Productio \u00b7 55e0af95", "Cloud-Prod-EU-London-Superscript-Pro \u00b7 edd59473", "Laravel-Cloud-Prod-US-Ohio-General \u00b7 ebc87a67", "Laravel-Cloud-Prod-AP-Singapore-Gene \u00b7 34fe64cf", "Laravel-Cloud-Prod-EU-Ireland-Genera \u00b7 12f3224a", "Laravel-Cloud-Prod-AP-Singapore-Gene \u00b7 037fa30c", "Laravel-Cloud-Prod-CA-Central-Genera \u00b7 a250c237", "Laravel-Cloud-Prod-AP-Sydney-General \u00b7 3328de54", "Laravel-Cloud-Prod-EU-Ireland-ENT-Po \u00b7 0c5ec7ea", "Laravel-Cloud-Prod-EU-Frankfurt-Gene \u00b7 6cf0b399", "Cloud-Prod-EU-Ireland-Bayut-Producti \u00b7 2b35078f", "Laravel-Cloud-Prod-CA-Central-Genera \u00b7 df4659e3", "Cloud-Prod-US-Ohio-Laravel-GTM-Produ \u00b7 88d2c450", "Cloud-Prod-EU-Frankfurt-Membirds-Pro \u00b7 8377f7d9", "Laravel-Cloud-Prod-EU-Frankfurt-Gene \u00b7 7d674c30", "Laravel-Cloud-Prod-EU-London-General \u00b7 156003dc", "Laravel-Cloud-Prod-AP-Sydney-ENT-Swy \u00b7 46094f47", "Laravel-Cloud-Prod-EU-London-ENT-Gam \u00b7 f97b3c4f", "Cloud-Prod-US-Ohio-Edverum-Productio \u00b7 61e99e39", "Cloud-Prod-EU-Frankfurt-GAEM-Product \u00b7 7fd4841b", "Cloud-Prod-US-Ohio-Diagonal-Producti \u00b7 9ef2a96a", "Laravel-Cloud-Prod-AP-Sydney-General \u00b7 622fa196", "Laravel-Cloud-Prod-EU-Ireland-Genera \u00b7 6ee9cb61", "Laravel-Cloud-Prod-AP-Singapore-Gene \u00b7 b19c484c", "Cloud-Prod-EU-Frankfurt-LapSafe-Prod \u00b7 727f4c56", "Cloud-Prod-US-Virginia-Bo-Battle-Are \u00b7 fdadcb2d", "Laravel-Cloud-Prod-EU-Frankfurt-ENT- \u00b7 c2d5dbb4", "Cloud-Prod-EU-Ireland-Trybe-Producti \u00b7 eae6798d", "Cloud-Prod-US-Ohio-Foundry-Productio \u00b7 04ca26ba", "Cloud-Prod-EU-London-Kin-Production \u00b7 4e41e088", "Cloud-Prod-US-Virginia-Publica-Ia-Pr \u00b7 be0b3bba", "Cloud-Prod-US-Ohio-GovAI-Production \u00b7 e263157d", "Cloud-Prod-US-Virginia-KaTom-Restaur \u00b7 d7f0ce69", "Laravel-Cloud-Prod-EU-Ireland-ENT-Po \u00b7 83f2adc2", "Cloud-Prod-CA-Central-GovAI-Producti \u00b7 d56d84b6", "Cloud-Prod-EU-Frankfurt-Calibur-Prod \u00b7 a9f2015a", "Cloud-Prod-US-Virginia-Shuttleapp-Pr \u00b7 1f57f4ec", "Cloud-Prod-US-Ohio-Davidson-Producti \u00b7 8ce7a57c", "Cloud-Prod-AP-Singapore-AIO-Wireless \u00b7 08c96acf", "Cloud-Prod-AP-Northeast-1-General \u00b7 734ab510", "Cloud-Prod-AP-Northeast-1-General \u00b7 e021171a", "Cloud-Prod-US-Virginia-Rimsys-Produc \u00b7 6ff4bcfb"],
+             datasets: [
+               { label:'90d peak (Gbps)',    data: [31.62, 14.89, 11.15, 10.87, 9.73, 7.52, 5.57, 4.99, 4.7, 4.69, 4.39, 4.07, 3.41, 3.08, 3.02, 2.98, 2.91, 2.34, 2.34, 2.31, 2.25, 2.24, 2.13, 2.06, 1.96, 1.78, 1.46, 1.44, 1.43, 1.39, 1.37, 1.29, 1.2, 1.18, 1.16, 1.1, 1.08, 1.06, 1.02, 0.94, 0.82, 0.66, 0.57, 0.57, 0.51, 0.42, 0.39, 0.37, 0.36, 0.35, 0.32],
+                  backgroundColor: 'rgba(37,99,235,0.7)', borderColor:'rgba(37,99,235,1)', borderWidth:1 },
+               { label:'Last-15d peak (Gbps)', data: [0.8, 2.51, 7.65, 10.87, 5.97, 7.52, 4.14, 0.95, 4.7, 1.95, 3.04, 0.18, 2.03, 1.39, 1.25, 1.24, 1.15, 1.59, 0.12, 1.9, 1.45, 0.9, 0.37, 2.06, 0.33, 0.99, 1.46, 1.44, 1.43, 0.84, 1.37, 1.29, 0.1, 0.65, 0.43, 1.1, 1.05, 0.47, 1.02, 0.43, 0.74, 0.66, 0.57, 0.57, 0.51, 0.34, 0.39, 0.37, 0.33, 0.22, 0.28],
+                  backgroundColor: 'rgba(217,119,6,0.7)', borderColor:'rgba(217,119,6,1)', borderWidth:1 },
+             ] },
+    options: { indexAxis:'y', maintainAspectRatio:false,
+                scales: { x: { title:{display:true,text:'Gbps'} },
+                           y: { ticks:{ font:{family:'SF Mono, ui-monospace, monospace', size:9} } } },
+                plugins: { legend: { position:'top' } } }
+  });
+</script>
+</body>
+</html>
