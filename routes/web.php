@@ -8,6 +8,17 @@ Route::get('/', function () {
     return view('plain');
 });
 
+Route::get('/pause', function() {
+	request()->validate([
+		'seconds' => ['numeric'],
+	]);
+	$s = request()->get('seconds');
+
+	sleep($s);
+
+	return 'done';
+});
+
 /*
  * Simple read-only check against SQS to verify that temporary credentials
  * (e.g. from an EKS Pod Identity association) are being picked up correctly.
