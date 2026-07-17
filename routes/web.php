@@ -14,9 +14,11 @@ Route::get('/pause', function() {
 	]);
 	$s = request()->get('seconds');
 
+	$start = microtime(true);
 	sleep($s);
+	$elapsed = microtime(true) - $start;
 
-	return 'done';
+	return sprintf('elapsed: %.2fs', $elapsed);
 });
 
 /*
